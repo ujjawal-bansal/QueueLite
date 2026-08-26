@@ -12,25 +12,62 @@ export class ApiError extends Error {
   }
 }
 
+// A sleeping free-tier server drops the first request while it wakes, which at
+// a clinic desk looks like the app is broken. Retry the safe-to-repeat calls
+// instead of surfacing that. POST is never retried: re-sending a token
+// creation that actually succeeded would issue the patient a second number.
+const RETRYABLE_METHODS = new Set(['GET', 'PATCH'])
+const RETRY_DELAYS_MS = [1000, 3000, 6000]
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 async function request(path, options = {}) {
   if (API_BASE_URL === null) {
     throw new ApiError('VITE_API_BASE_URL is not set', 0)
   }
 
-  let response
+  const method = (options.method || 'GET').toUpperCase()
+  const canRetry = RETRYABLE_METHODS.has(method)
+  const attempts = canRetry ? RETRY_DELAYS_MS.length + 1 : 1
 
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      // The staff session is an httpOnly cookie, so it has to ride along.
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    })
-  } catch {
-    throw new ApiError('Cannot reach the server. Check your connection.', 0)
+  let response
+  let lastError
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        // The staff session is an httpOnly cookie, so it has to ride along.
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        ...options,
+      })
+      lastError = null
+    } catch {
+      lastError = new ApiError('Cannot reach the server. Check your connection.', 0)
+    }
+
+    // 502/503/504 are what a platform returns while the instance is starting.
+    const isWaking = response && [502, 503, 504].includes(response.status)
+
+    if (!lastError && !isWaking) {
+      break
+    }
+
+    if (attempt < attempts - 1) {
+      await wait(RETRY_DELAYS_MS[attempt])
+      continue
+    }
+
+    if (lastError) {
+      throw lastError
+    }
+  }
+
+  if (lastError) {
+    throw lastError
   }
 
   let result
