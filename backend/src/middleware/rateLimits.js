@@ -2,10 +2,13 @@ const rateLimit = require('express-rate-limit');
 
 const message = (error) => ({ success: false, error });
 
-// Brute-forcing a shared passcode is the main risk on this endpoint.
+// The frontend proxies /api through Vercel, so requests reach us from Vercel's
+// edge rather than each visitor's address: these budgets are now shared by
+// everyone at once. Sized for one clinic, and still low enough to stop a
+// passcode from being brute-forced.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: message('Too many sign-in attempts. Try again in a few minutes.'),
@@ -14,7 +17,7 @@ const loginLimiter = rateLimit({
 // Generous enough for a busy front desk, tight enough to stop a script.
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: 240,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: message('Too many requests. Slow down for a moment.'),
@@ -25,7 +28,7 @@ const writeLimiter = rateLimit({
 // by the whole waiting room at once, not by one person.
 const publicLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 300,
+  limit: 1200,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: message('Too many requests. Slow down for a moment.'),
