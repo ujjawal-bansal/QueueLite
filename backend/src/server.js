@@ -52,6 +52,20 @@ app.use('/api/auth', authRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api', clinicRoutes);
 
+// The API has no UI. Answer the bare root with something self-explanatory so
+// visiting the service URL does not look like a broken deploy.
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    service: 'queuelite-api',
+    message: 'QueueLite API. The app itself lives at the frontend URL below.',
+    data: {
+      app: env.frontendUrl,
+      health: '/api/health',
+    },
+  });
+});
+
 app.use((req, res) => {
   res.status(404).json({ success: false, error: 'Not found' });
 });
