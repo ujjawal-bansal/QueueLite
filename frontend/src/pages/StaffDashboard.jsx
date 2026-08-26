@@ -7,6 +7,8 @@ import {
   getQueueToday,
   logout,
   markNoShow,
+  onRetry,
+  restoreToken,
 } from '../api/queue'
 import TokenHandoff from '../components/TokenHandoff'
 
@@ -156,6 +158,7 @@ function StaffDashboard() {
   const { slug } = useParams()
   const mountedRef = useRef(false)
   const successTimerRef = useRef(null)
+  const undoTimerRef = useRef(null)
   const [queue, setQueue] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -165,6 +168,10 @@ function StaffDashboard() {
   const [successMessage, setSuccessMessage] = useState('')
   const [actionError, setActionError] = useState('')
   const [issuedToken, setIssuedToken] = useState(null)
+  const [pendingTokenId, setPendingTokenId] = useState(null)
+  const [undoOffer, setUndoOffer] = useState(null)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const nameInputRef = useRef(null)
 
   const loadQueue = useCallback(
     async ({ silent = false } = {}) => {
@@ -211,8 +218,11 @@ function StaffDashboard() {
       window.clearTimeout(initialLoadId)
       window.clearInterval(intervalId)
       window.clearTimeout(successTimerRef.current)
+      window.clearTimeout(undoTimerRef.current)
     }
   }, [loadQueue])
+
+  useEffect(() => onRetry(setIsReconnecting), [])
 
   const clinic = useMemo(() => getClinicDetails(queue, slug), [queue, slug])
   const servingToken = useMemo(
@@ -274,6 +284,7 @@ function StaffDashboard() {
       setForm({ patientName: '', patientPhone: '' })
       setFormErrors({})
       setIssuedToken(token)
+      nameInputRef.current?.focus()
       setSuccessMessage(`Token #${token.token_number} assigned`)
       window.clearTimeout(successTimerRef.current)
       successTimerRef.current = window.setTimeout(() => {
@@ -293,21 +304,30 @@ function StaffDashboard() {
   }
 
   async function handleTokenAction(token, action) {
+    // A second tap while the first is still in flight would fire the action
+    // twice; on Call In that means closing out the wrong patient.
+    if (pendingTokenId) {
+      return
+    }
+
     const previousQueue = queue
     const optimisticStatusByAction = {
       'call-in': 'in_progress',
       done: 'done',
       'no-show': 'no_show',
+      restore: 'waiting',
     }
     const requestByAction = {
       'call-in': callIn,
       done: completeToken,
       'no-show': markNoShow,
+      restore: restoreToken,
     }
     const optimisticStatus = optimisticStatusByAction[action]
     const request = requestByAction[action]
 
     setActionError('')
+    setPendingTokenId(token.id)
     setQueue((currentQueue) =>
       setTokenStatus(currentQueue, token.id, optimisticStatus),
     )
@@ -317,6 +337,18 @@ function StaffDashboard() {
 
       if (mountedRef.current) {
         setQueue((currentQueue) => updateToken(currentQueue, updatedToken))
+
+        if (action === 'no-show' || action === 'done') {
+          setUndoOffer({ token: updatedToken, action })
+          window.clearTimeout(undoTimerRef.current)
+          undoTimerRef.current = window.setTimeout(() => {
+            if (mountedRef.current) {
+              setUndoOffer(null)
+            }
+          }, 8000)
+        } else {
+          setUndoOffer(null)
+        }
       }
     } catch (error) {
       if (mountedRef.current) {
@@ -326,7 +358,21 @@ function StaffDashboard() {
           setActionError(error.message)
         }
       }
+    } finally {
+      if (mountedRef.current) {
+        setPendingTokenId(null)
+      }
     }
+  }
+
+  async function handleUndo() {
+    if (!undoOffer) {
+      return
+    }
+
+    const { token } = undoOffer
+    setUndoOffer(null)
+    await handleTokenAction(token, 'restore')
   }
 
   async function handleSignOut() {
@@ -370,12 +416,31 @@ function StaffDashboard() {
           <button
             type="button"
             className="done-button"
+            disabled={Boolean(pendingTokenId)}
             onClick={() => handleTokenAction(servingToken, 'done')}
           >
-            Mark Done
+            {pendingTokenId === servingToken.id ? 'Working...' : 'Mark Done'}
           </button>
         ) : null}
       </section>
+
+      {isReconnecting ? (
+        <p className="reconnect-banner" aria-live="polite">
+          Reconnecting to the server...
+        </p>
+      ) : null}
+
+      {undoOffer ? (
+        <div className="undo-bar" aria-live="polite">
+          <span>
+            #{undoOffer.token.token_number}{' '}
+            {undoOffer.action === 'no-show' ? 'marked no show' : 'marked done'}
+          </span>
+          <button type="button" className="undo-button" onClick={handleUndo}>
+            Undo
+          </button>
+        </div>
+      ) : null}
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}
 
@@ -385,6 +450,7 @@ function StaffDashboard() {
           <label>
             <span>Name</span>
             <input
+              ref={nameInputRef}
               type="text"
               value={form.patientName}
               onChange={(event) =>
@@ -459,13 +525,15 @@ function StaffDashboard() {
                   <button
                     type="button"
                     className="call-button"
+                    disabled={Boolean(pendingTokenId)}
                     onClick={() => handleTokenAction(token, 'call-in')}
                   >
-                    Call In
+                    {pendingTokenId === token.id ? 'Working...' : 'Call In'}
                   </button>
                   <button
                     type="button"
                     className="no-show-button"
+                    disabled={Boolean(pendingTokenId)}
                     onClick={() => handleTokenAction(token, 'no-show')}
                   >
                     No Show

@@ -21,6 +21,19 @@ const RETRY_DELAYS_MS = [1000, 3000, 6000]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Lets the UI say "reconnecting" instead of appearing frozen while a sleeping
+// server wakes up.
+const retryListeners = new Set()
+
+export function onRetry(listener) {
+  retryListeners.add(listener)
+  return () => retryListeners.delete(listener)
+}
+
+const announceRetry = (isRetrying) => {
+  retryListeners.forEach((listener) => listener(isRetrying))
+}
+
 async function request(path, options = {}) {
   if (API_BASE_URL === null) {
     throw new ApiError('VITE_API_BASE_URL is not set', 0)
@@ -57,6 +70,7 @@ async function request(path, options = {}) {
     }
 
     if (attempt < attempts - 1) {
+      announceRetry(true)
       await wait(RETRY_DELAYS_MS[attempt])
       continue
     }
@@ -65,6 +79,8 @@ async function request(path, options = {}) {
       throw lastError
     }
   }
+
+  announceRetry(false)
 
   if (lastError) {
     throw lastError
@@ -126,6 +142,12 @@ export function callIn(slug, tokenId) {
 
 export function completeToken(slug, tokenId) {
   return request(`/api/clinics/${slug}/tokens/${tokenId}/done`, {
+    method: 'PATCH',
+  })
+}
+
+export function restoreToken(slug, tokenId) {
+  return request(`/api/clinics/${slug}/tokens/${tokenId}/restore`, {
     method: 'PATCH',
   })
 }

@@ -1,0 +1,26 @@
+# Render's free tier sleeps after ~15 minutes idle, so the first request of the
+# morning takes 30-50s while the instance boots. Pinging health keeps it warm,
+# which matters when the person waiting is a receptionist with a queue in front
+# of them. One free service fits inside the 750 monthly hours.
+name: Keep API awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+              https://queuelite-api.onrender.com/api/health) && true
+            echo "attempt $attempt -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "API did not respond healthily"
+          exit 1

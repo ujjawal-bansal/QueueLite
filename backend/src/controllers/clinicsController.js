@@ -262,6 +262,9 @@ const setTokenStatus = (status, logMessage) => async (req, res, next) => {
 
 const completeToken = setTokenStatus('done', 'token completed');
 const markNoShow = setTokenStatus('no_show', 'token marked no-show');
+// Call In and No Show sit next to each other on a phone, so a mis-tap is easy
+// and was previously unrecoverable - the patient just vanished from the queue.
+const restoreToken = setTokenStatus('waiting', 'token returned to the queue');
 
 // Public: reachable by anyone holding the tracking link, so it must not leak
 // the patient's phone number.
@@ -319,5 +322,6 @@ module.exports = {
   callInToken,
   completeToken,
   markNoShow,
+  restoreToken,
   getToken,
 };

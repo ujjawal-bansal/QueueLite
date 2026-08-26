@@ -645,3 +645,45 @@ input:focus-visible {
 .clinic-header h1 {
   overflow-wrap: anywhere;
 }
+
+/* --- Reconnect + undo feedback --- */
+
+.reconnect-banner {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.undo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.undo-button {
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 0 20px;
+  background: var(--blue);
+  color: #ffffff;
+}
+
+/* Keep the two row actions far enough apart to be hard to mis-tap. */
+.row-actions {
+  gap: 10px;
+}
