@@ -27,11 +27,9 @@ function getClinicDetails(queue, slug) {
 
   return {
     name: clinic.name || queue?.clinic_name || queue?.name || formatSlug(slug),
-    doctor:
-      clinic.doctor_name ||
-      queue?.doctor_name ||
-      queue?.doctor ||
-      'Doctor details unavailable',
+    // Filler text like "Doctor details unavailable" is noise on a screen the
+    // front desk stares at all day; show nothing when there is nothing to say.
+    doctor: clinic.doctor_name || queue?.doctor_name || queue?.doctor || '',
   }
 }
 
@@ -172,6 +170,7 @@ function StaffDashboard() {
   const [undoOffer, setUndoOffer] = useState(null)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const nameInputRef = useRef(null)
+  const lastMutationAtRef = useRef(0)
 
   const loadQueue = useCallback(
     async ({ silent = false } = {}) => {
@@ -179,10 +178,17 @@ function StaffDashboard() {
         setIsLoading(true)
       }
 
+      const startedAt = Date.now()
+
       try {
         const data = await getQueueToday(slug)
 
         if (!mountedRef.current) {
+          return
+        }
+
+        // A poll begun before the last action carries pre-action data.
+        if (startedAt < lastMutationAtRef.current) {
           return
         }
 
@@ -229,6 +235,14 @@ function StaffDashboard() {
     () => (queue?.tokens || []).find((token) => token.status === 'in_progress'),
     [queue],
   )
+  const todayTotals = useMemo(() => {
+    const tokens = queue?.tokens || []
+
+    return {
+      seen: tokens.filter((token) => token.status === 'done').length,
+      noShow: tokens.filter((token) => token.status === 'no_show').length,
+    }
+  }, [queue])
   const waitingTokens = useMemo(
     () =>
       (queue?.tokens || [])
@@ -266,6 +280,8 @@ function StaffDashboard() {
       if (!mountedRef.current) {
         return
       }
+
+      lastMutationAtRef.current = Date.now()
 
       setQueue((currentQueue) => {
         if (!currentQueue) {
@@ -335,6 +351,8 @@ function StaffDashboard() {
     try {
       const updatedToken = await request(slug, token.id)
 
+      lastMutationAtRef.current = Date.now()
+
       if (mountedRef.current) {
         setQueue((currentQueue) => updateToken(currentQueue, updatedToken))
 
@@ -388,7 +406,7 @@ function StaffDashboard() {
       <header className="clinic-header">
         <div>
           <h1>{clinic.name}</h1>
-          <p>{clinic.doctor}</p>
+          {clinic.doctor ? <p>{clinic.doctor}</p> : null}
         </div>
         <div className="header-side">
           <p className="today-label">{getTodayLabel()}</p>
@@ -469,7 +487,7 @@ function StaffDashboard() {
           <label>
             <span>Phone</span>
             <input
-              type="number"
+              type="tel"
               value={form.patientPhone}
               onChange={(event) =>
                 updateFormField(
@@ -504,6 +522,11 @@ function StaffDashboard() {
           <h2>Waiting List</h2>
           <span>{queue?.waiting_count || 0} waiting</span>
         </div>
+
+        <p className="today-totals">
+          {todayTotals.seen} seen today
+          {todayTotals.noShow > 0 ? ` · ${todayTotals.noShow} no show` : ''}
+        </p>
 
         {actionError ? <p className="error-banner">{actionError}</p> : null}
 
