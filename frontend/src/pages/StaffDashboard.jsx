@@ -168,7 +168,7 @@ function StaffDashboard() {
   const [issuedToken, setIssuedToken] = useState(null)
   const [pendingTokenId, setPendingTokenId] = useState(null)
   const [undoOffer, setUndoOffer] = useState(null)
-  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [retryState, setRetryState] = useState({ retrying: false, attempt: 0, total: 0 })
   const nameInputRef = useRef(null)
   const lastMutationAtRef = useRef(0)
 
@@ -228,7 +228,7 @@ function StaffDashboard() {
     }
   }, [loadQueue])
 
-  useEffect(() => onRetry(setIsReconnecting), [])
+  useEffect(() => onRetry(setRetryState), [])
 
   const clinic = useMemo(() => getClinicDetails(queue, slug), [queue, slug])
   const servingToken = useMemo(
@@ -444,9 +444,11 @@ function StaffDashboard() {
         ) : null}
       </section>
 
-      {isReconnecting ? (
+      {retryState.retrying ? (
         <p className="reconnect-banner" aria-live="polite">
-          Reconnecting to the server...
+          Waking the server, this can take up to a minute
+          {retryState.total ? ` (${retryState.attempt}/${retryState.total})` : ''}
+          ... your last action is still being sent.
         </p>
       ) : null}
 

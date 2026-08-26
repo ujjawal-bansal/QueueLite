@@ -17,7 +17,10 @@ export class ApiError extends Error {
 // instead of surfacing that. POST is never retried: re-sending a token
 // creation that actually succeeded would issue the patient a second number.
 const RETRYABLE_METHODS = new Set(['GET', 'PATCH'])
-const RETRY_DELAYS_MS = [1000, 3000, 6000]
+// A free-tier instance takes 30-60s to come back from a redeploy or a sleep,
+// so a 10s window gave up while the server was still on its way. Cover a
+// realistic restart instead of making staff re-tap and wonder what broke.
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 12000, 15000, 15000]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -30,8 +33,8 @@ export function onRetry(listener) {
   return () => retryListeners.delete(listener)
 }
 
-const announceRetry = (isRetrying) => {
-  retryListeners.forEach((listener) => listener(isRetrying))
+const announceRetry = (state) => {
+  retryListeners.forEach((listener) => listener(state))
 }
 
 async function request(path, options = {}) {
@@ -70,7 +73,7 @@ async function request(path, options = {}) {
     }
 
     if (attempt < attempts - 1) {
-      announceRetry(true)
+      announceRetry({ retrying: true, attempt: attempt + 1, total: attempts - 1 })
       await wait(RETRY_DELAYS_MS[attempt])
       continue
     }
@@ -80,7 +83,7 @@ async function request(path, options = {}) {
     }
   }
 
-  announceRetry(false)
+  announceRetry({ retrying: false, attempt: 0, total: 0 })
 
   if (lastError) {
     throw lastError
