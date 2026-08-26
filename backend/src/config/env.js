@@ -35,6 +35,14 @@ const env = {
     hint: 'the public URL of the patient/staff site, used for CORS and tracking links',
   })),
 
+  // Vercel serves the same app on preview hostnames too, and a request from
+  // one of those is rejected by CORS in a way the browser reports only as a
+  // failed connection. List any extra origins here rather than debugging it.
+  extraAllowedOrigins: optional('ALLOWED_ORIGINS', '')
+    .split(',')
+    .map((value) => value.trim().replace(/\/+$/, ''))
+    .filter(Boolean),
+
   clinicSlug: required('CLINIC_SLUG', {
     hint: 'the single clinic this deployment serves, e.g. sharma-clinic',
   }),

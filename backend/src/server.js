@@ -19,9 +19,27 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 
+const allowedOrigins = new Set(
+  [env.frontendUrl, ...env.extraAllowedOrigins].filter(Boolean)
+);
+
 app.use(
   cors({
-    origin: env.frontendUrl,
+    origin: (origin, callback) => {
+      // No Origin header at all: curl, health checks, Meta's webhook.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      // The browser only tells the user "failed to fetch", so record the real
+      // reason here - otherwise a blocked origin is invisible to diagnose.
+      logger.warn({ origin, allowed: [...allowedOrigins] }, 'blocked cross-origin request');
+      return callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   })

@@ -13,6 +13,8 @@ services:
       # Render provides PORT; the app reads it automatically.
       - key: FRONTEND_URL
         sync: false        # https://your-app.vercel.app
+      - key: ALLOWED_ORIGINS
+        sync: false        # optional: Vercel preview URLs, comma separated
       - key: CLINIC_SLUG
         sync: false
       - key: SUPABASE_URL
