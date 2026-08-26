@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { addPatient, callIn, getQueueToday, markNoShow } from '../api/queue'
+import {
+  addPatient,
+  callIn,
+  completeToken,
+  getQueueToday,
+  logout,
+  markNoShow,
+} from '../api/queue'
+import TokenHandoff from '../components/TokenHandoff'
 
 const POLL_INTERVAL_MS = 9000
 
@@ -66,16 +74,29 @@ function updateToken(queue, updatedToken) {
     waitingCount += 1
   }
 
+  let currentTokenNumber = queue.current_token_number
+
+  if (updatedToken.status === 'in_progress') {
+    currentTokenNumber = updatedToken.token_number
+  } else if (previousToken?.status === 'in_progress') {
+    currentTokenNumber = null
+  }
+
   return {
     ...queue,
-    current_token_number:
-      updatedToken.status === 'in_progress'
-        ? updatedToken.token_number
-        : queue.current_token_number,
+    current_token_number: currentTokenNumber,
     waiting_count: waitingCount,
-    tokens: queue.tokens.map((token) =>
-      token.id === updatedToken.id ? updatedToken : token,
-    ),
+    tokens: queue.tokens.map((token) => {
+      if (token.id === updatedToken.id) {
+        return updatedToken
+      }
+
+      if (updatedToken.status === 'in_progress' && token.status === 'in_progress') {
+        return { ...token, status: 'done' }
+      }
+
+      return token
+    }),
   }
 }
 
@@ -95,17 +116,40 @@ function setTokenStatus(queue, tokenId, status) {
     waitingCount += 1
   }
 
+  let currentTokenNumber = queue.current_token_number
+
+  if (status === 'in_progress' && changedToken) {
+    currentTokenNumber = changedToken.token_number
+  } else if (changedToken?.status === 'in_progress') {
+    currentTokenNumber = null
+  }
+
   return {
     ...queue,
-    current_token_number:
-      status === 'in_progress' && changedToken
-        ? changedToken.token_number
-        : queue.current_token_number,
+    current_token_number: currentTokenNumber,
     waiting_count: waitingCount,
-    tokens: queue.tokens.map((token) =>
-      token.id === tokenId ? { ...token, status } : token,
-    ),
+    tokens: queue.tokens.map((token) => {
+      if (token.id === tokenId) {
+        return { ...token, status }
+      }
+
+      if (status === 'in_progress' && token.status === 'in_progress') {
+        return { ...token, status: 'done' }
+      }
+
+      return token
+    }),
   }
+}
+
+// The session cookie can expire mid-shift; reloading re-runs the auth gate.
+function handleAuthLoss(error) {
+  if (error.status === 401) {
+    window.location.reload()
+    return true
+  }
+
+  return false
 }
 
 function StaffDashboard() {
@@ -120,6 +164,7 @@ function StaffDashboard() {
   const [isAdding, setIsAdding] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [actionError, setActionError] = useState('')
+  const [issuedToken, setIssuedToken] = useState(null)
 
   const loadQueue = useCallback(
     async ({ silent = false } = {}) => {
@@ -137,7 +182,7 @@ function StaffDashboard() {
         setQueue(data)
         setLoadError('')
       } catch (error) {
-        if (!mountedRef.current) {
+        if (!mountedRef.current || handleAuthLoss(error)) {
           return
         }
 
@@ -170,6 +215,10 @@ function StaffDashboard() {
   }, [loadQueue])
 
   const clinic = useMemo(() => getClinicDetails(queue, slug), [queue, slug])
+  const servingToken = useMemo(
+    () => (queue?.tokens || []).find((token) => token.status === 'in_progress'),
+    [queue],
+  )
   const waitingTokens = useMemo(
     () =>
       (queue?.tokens || [])
@@ -224,6 +273,7 @@ function StaffDashboard() {
 
       setForm({ patientName: '', patientPhone: '' })
       setFormErrors({})
+      setIssuedToken(token)
       setSuccessMessage(`Token #${token.token_number} assigned`)
       window.clearTimeout(successTimerRef.current)
       successTimerRef.current = window.setTimeout(() => {
@@ -232,7 +282,7 @@ function StaffDashboard() {
         }
       }, 2000)
     } catch (error) {
-      if (mountedRef.current) {
+      if (mountedRef.current && !handleAuthLoss(error)) {
         setFormErrors({ form: error.message })
       }
     } finally {
@@ -244,8 +294,18 @@ function StaffDashboard() {
 
   async function handleTokenAction(token, action) {
     const previousQueue = queue
-    const optimisticStatus = action === 'call-in' ? 'in_progress' : 'no_show'
-    const request = action === 'call-in' ? callIn : markNoShow
+    const optimisticStatusByAction = {
+      'call-in': 'in_progress',
+      done: 'done',
+      'no-show': 'no_show',
+    }
+    const requestByAction = {
+      'call-in': callIn,
+      done: completeToken,
+      'no-show': markNoShow,
+    }
+    const optimisticStatus = optimisticStatusByAction[action]
+    const request = requestByAction[action]
 
     setActionError('')
     setQueue((currentQueue) =>
@@ -261,8 +321,19 @@ function StaffDashboard() {
     } catch (error) {
       if (mountedRef.current) {
         setQueue(previousQueue)
-        setActionError(error.message)
+
+        if (!handleAuthLoss(error)) {
+          setActionError(error.message)
+        }
       }
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await logout()
+    } finally {
+      window.location.reload()
     }
   }
 
@@ -273,16 +344,37 @@ function StaffDashboard() {
           <h1>{clinic.name}</h1>
           <p>{clinic.doctor}</p>
         </div>
-        <p className="today-label">{getTodayLabel()}</p>
+        <div className="header-side">
+          <p className="today-label">{getTodayLabel()}</p>
+          <button type="button" className="signout-button" onClick={handleSignOut}>
+            Sign Out
+          </button>
+        </div>
       </header>
 
+      <TokenHandoff token={issuedToken} onDismiss={() => setIssuedToken(null)} />
+
       <section className="serving-panel" aria-live="polite">
-        <p>Now Serving</p>
-        {queue?.current_token_number ? (
-          <strong>#{queue.current_token_number}</strong>
-        ) : (
-          <strong className="not-started">Queue not started</strong>
-        )}
+        <div className="serving-details">
+          <p>Now Serving</p>
+          {queue?.current_token_number ? (
+            <strong>#{queue.current_token_number}</strong>
+          ) : (
+            <strong className="not-started">Queue not started</strong>
+          )}
+          {servingToken ? (
+            <span className="serving-name">{servingToken.patient_name}</span>
+          ) : null}
+        </div>
+        {servingToken ? (
+          <button
+            type="button"
+            className="done-button"
+            onClick={() => handleTokenAction(servingToken, 'done')}
+          >
+            Mark Done
+          </button>
+        ) : null}
       </section>
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}

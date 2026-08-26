@@ -307,3 +307,341 @@ input:focus-visible {
     align-items: center;
   }
 }
+
+/* --- Now-serving panel with a Done action --- */
+
+.serving-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.serving-details {
+  min-width: 0;
+}
+
+.serving-name {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.done-button {
+  flex-shrink: 0;
+  padding: 0 18px;
+  background: var(--green);
+  color: #ffffff;
+}
+
+/* --- Patient queue-position page --- */
+
+.patient-page,
+.home-page,
+.not-found-page {
+  width: min(100%, 560px);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: 18px 14px 28px;
+}
+
+.my-token,
+.patient-status,
+.queue-facts,
+.clinic-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.my-token {
+  text-align: center;
+}
+
+.my-token p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.my-token strong {
+  display: block;
+  color: var(--green-dark);
+  font-size: 4.2rem;
+  line-height: 0.95;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.status-pill-in_progress {
+  background: var(--green);
+  color: #ffffff;
+}
+
+.status-pill-no_show {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.patient-status h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 1.45rem;
+  line-height: 1.18;
+  font-weight: 850;
+}
+
+.patient-status p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  font-weight: 650;
+}
+
+.status-in_progress .patient-status h2 {
+  color: var(--green-dark);
+}
+
+.queue-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  text-align: center;
+}
+
+.queue-facts p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.queue-facts strong {
+  color: var(--text);
+  font-size: 1.6rem;
+  font-weight: 850;
+}
+
+.patient-footer {
+  margin: 0;
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+/* --- Home + not found --- */
+
+.clinic-list h2 {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 850;
+}
+
+.clinic-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.clinic-list .call-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.not-found-page h1 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 1.6rem;
+  font-weight: 850;
+}
+
+.not-found-page .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 14px;
+  text-decoration: none;
+}
+
+/* --- Staff sign-in --- */
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 560px);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: 18px 14px;
+}
+
+.login-card {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 24px 20px;
+}
+
+.login-card h1 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 1.7rem;
+  font-weight: 850;
+}
+
+.login-card > p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.login-card form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.login-card input {
+  min-height: 52px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--text);
+  padding: 0 14px;
+  font-size: 1.08rem;
+}
+
+.login-card input[aria-invalid='true'] {
+  border-color: var(--red);
+}
+
+/* --- Header controls --- */
+
+.clinic-header {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.signout-button {
+  min-height: 38px;
+  padding: 0 14px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+/* --- Token handoff (QR + link) --- */
+
+.token-handoff {
+  background: var(--panel);
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.handoff-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.handoff-heading p {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.handoff-heading strong {
+  color: var(--green-dark);
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.dismiss-button {
+  min-height: 40px;
+  padding: 0 16px;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.handoff-note {
+  margin: 12px 0 10px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.handoff-qr {
+  display: block;
+  width: min(200px, 60%);
+  height: auto;
+  margin: 0 auto 12px;
+  border-radius: 6px;
+}
+
+.copy-button {
+  width: 100%;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Keep a long clinic/doctor name from colliding with the date block. */
+.clinic-header > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.clinic-header h1 {
+  overflow-wrap: anywhere;
+}
