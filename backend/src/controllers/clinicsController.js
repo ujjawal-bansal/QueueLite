@@ -12,8 +12,25 @@ const {
   toPublicToken,
 } = require('../services/queueService');
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const sendError = (res, statusCode, message) => {
   res.status(statusCode).json({ success: false, error: message });
+};
+
+/**
+ * Postgres rejects a malformed uuid with a driver-level message that we were
+ * passing straight back to the caller. Check the shape here instead: it keeps
+ * database internals out of responses and saves a pointless round trip.
+ */
+const isValidTokenId = (tokenId, res) => {
+  if (!UUID_PATTERN.test(String(tokenId || ''))) {
+    sendError(res, 404, 'Token not found');
+    return false;
+  }
+
+  return true;
 };
 
 /**
@@ -167,6 +184,11 @@ const getTodayQueue = async (req, res, next) => {
 const callInToken = async (req, res, next) => {
   try {
     const { tokenId } = req.params;
+
+    if (!isValidTokenId(tokenId, res)) {
+      return undefined;
+    }
+
     const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
@@ -230,6 +252,11 @@ const callInToken = async (req, res, next) => {
 const setTokenStatus = (status, logMessage) => async (req, res, next) => {
   try {
     const { tokenId } = req.params;
+
+    if (!isValidTokenId(tokenId, res)) {
+      return undefined;
+    }
+
     const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
@@ -271,6 +298,11 @@ const restoreToken = setTokenStatus('waiting', 'token returned to the queue');
 const getToken = async (req, res, next) => {
   try {
     const { tokenId } = req.params;
+
+    if (!isValidTokenId(tokenId, res)) {
+      return undefined;
+    }
+
     const clinic = await resolveClinic(req, res);
 
     if (!clinic) {

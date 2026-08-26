@@ -20,10 +20,12 @@ const writeLimiter = rateLimit({
   message: message('Too many requests. Slow down for a moment.'),
 });
 
-// Patient tracking pages poll this every few seconds.
+// Patient tracking pages poll this every few seconds, and every patient sitting
+// in the clinic shares one public IP over its wifi - so this budget is consumed
+// by the whole waiting room at once, not by one person.
 const publicLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 120,
+  limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: message('Too many requests. Slow down for a moment.'),

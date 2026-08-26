@@ -384,7 +384,9 @@ function StaffDashboard() {
   }
 
   async function handleUndo() {
-    if (!undoOffer) {
+    // The action that produced this offer has already finished, so a lingering
+    // pending flag must not swallow the undo.
+    if (!undoOffer || pendingTokenId) {
       return
     }
 

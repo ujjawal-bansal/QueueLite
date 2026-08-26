@@ -5,6 +5,12 @@ import { getTokenStatus } from '../api/queue'
 const POLL_INTERVAL_MS = 9000
 const MINUTES_PER_PATIENT = 5
 
+// Once a visit ends nothing about it can change, so polling on is pure waste -
+// a phone left open on this page would hammer the API all day. The whole
+// waiting room also shares one clinic IP, so those wasted calls come out of a
+// budget everyone else needs.
+const TERMINAL_STATUSES = new Set(['done', 'no_show'])
+
 const STATUS_LABELS = {
   waiting: 'Waiting',
   in_progress: 'Your turn',
@@ -58,6 +64,7 @@ function PatientPage() {
   const [status, setStatus] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const statusRef = useRef(null)
 
   const loadStatus = useCallback(
     async ({ silent = false } = {}) => {
@@ -72,6 +79,7 @@ function PatientPage() {
           return
         }
 
+        statusRef.current = data?.token?.status || null
         setStatus(data)
         setLoadError('')
       } catch (error) {
@@ -94,13 +102,34 @@ function PatientPage() {
     }, 0)
 
     const intervalId = window.setInterval(() => {
+      if (TERMINAL_STATUSES.has(statusRef.current)) {
+        return
+      }
+
+      // A backgrounded tab does not need live updates; refresh on return.
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
       loadStatus({ silent: true })
     }, POLL_INTERVAL_MS)
+
+    const onVisible = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        !TERMINAL_STATUSES.has(statusRef.current)
+      ) {
+        loadStatus({ silent: true })
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       mountedRef.current = false
       window.clearTimeout(initialLoadId)
       window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [loadStatus])
 
