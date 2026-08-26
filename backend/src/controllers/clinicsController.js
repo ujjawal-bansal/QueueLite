@@ -1,134 +1,71 @@
 const supabase = require('../config/supabase');
-const { sendSms } = require('../utils/sms');
-
-const IST_TIME_ZONE = 'Asia/Kolkata';
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const env = require('../config/env');
+const logger = require('../utils/logger');
+const notifier = require('../services/notifier');
+const {
+  getClinicBySlug,
+  getTodayTokens,
+  getNextWaitingToken,
+  closeOutInProgress,
+  getQueueContext,
+  countPatientsAhead,
+  toPublicToken,
+} = require('../services/queueService');
 
 const sendError = (res, statusCode, message) => {
-  res.status(statusCode).json({
-    success: false,
-    error: message,
-  });
+  res.status(statusCode).json({ success: false, error: message });
 };
 
-const getIstTodayUtcRange = () => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: IST_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
+/**
+ * This deployment serves exactly one clinic. Refusing any other slug keeps a
+ * guessed URL from reaching another clinic's queue.
+ */
+const resolveClinic = async (req, res) => {
+  const { slug } = req.params;
 
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const year = Number(values.year);
-  const month = Number(values.month);
-  const day = Number(values.day);
-
-  const startUtcMs = Date.UTC(year, month - 1, day) - IST_OFFSET_MS;
-  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
-
-  return {
-    start: new Date(startUtcMs).toISOString(),
-    end: new Date(endUtcMs).toISOString(),
-  };
-};
-
-const getClinicBySlug = async (slug) => {
-  const { data, error } = await supabase
-    .from('clinics')
-    .select('*')
-    .eq('slug', slug)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
+  if (slug !== env.clinicSlug) {
+    sendError(res, 404, 'Clinic not found');
+    return null;
   }
 
-  return data;
-};
+  const clinic = await getClinicBySlug(slug);
 
-const getTodayTokens = async (clinicId) => {
-  const { start, end } = getIstTodayUtcRange();
-
-  const { data, error } = await supabase
-    .from('tokens')
-    .select('*')
-    .eq('clinic_id', clinicId)
-    .gte('created_at', start)
-    .lt('created_at', end)
-    .order('token_number', { ascending: true });
-
-  if (error) {
-    throw error;
+  if (!clinic) {
+    sendError(res, 404, 'Clinic not found');
+    return null;
   }
 
-  return data || [];
-};
-
-const getNextWaitingToken = async (clinicId) => {
-  const { start, end } = getIstTodayUtcRange();
-
-  const { data, error } = await supabase
-    .from('tokens')
-    .select('*')
-    .eq('clinic_id', clinicId)
-    .eq('status', 'waiting')
-    .gte('created_at', start)
-    .lt('created_at', end)
-    .order('token_number', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-};
-
-const getQueueContext = (tokens) => {
-  const currentToken = tokens.find((token) => token.status === 'in_progress');
-  const waitingCount = tokens.filter((token) => token.status === 'waiting').length;
-
-  return {
-    current_token_number: currentToken ? currentToken.token_number : null,
-    waiting_count: waitingCount,
-  };
-};
-
-const normalizeFrontendUrl = () => {
-  const frontendUrl = process.env.FRONTEND_URL;
-  return frontendUrl ? frontendUrl.replace(/\/+$/, '') : '';
+  return clinic;
 };
 
 const healthCheck = (req, res) => {
   res.json({
     success: true,
     message: 'QueueLite running',
+    data: {
+      clinic_slug: env.clinicSlug,
+      notifier: env.notifier,
+      time: new Date().toISOString(),
+    },
   });
 };
 
-const createClinic = async (req, res, next) => {
+const getClinic = async (req, res, next) => {
   try {
-    const { name, slug, doctor_name } = req.body;
+    const clinic = await getClinicBySlug(env.clinicSlug);
 
-    if (!name || !slug || !doctor_name) {
-      return sendError(res, 400, 'name, slug, and doctor_name are required');
+    if (!clinic) {
+      return sendError(res, 404, 'Clinic not found');
     }
 
-    const { data, error } = await supabase
-      .from('clinics')
-      .insert({ name, slug, doctor_name })
-      .select('*')
-      .single();
-
-    if (error) {
-      return sendError(res, 400, error.message);
-    }
-
-    res.status(201).json({
+    res.json({
       success: true,
-      data,
+      data: {
+        id: clinic.id,
+        name: clinic.name,
+        slug: clinic.slug,
+        doctor_name: clinic.doctor_name,
+      },
     });
   } catch (error) {
     next(error);
@@ -137,28 +74,29 @@ const createClinic = async (req, res, next) => {
 
 const createToken = async (req, res, next) => {
   try {
-    const { slug } = req.params;
-    const { patient_name, patient_phone } = req.body;
-    const frontendUrl = normalizeFrontendUrl();
+    const { patient_name, patient_phone } = req.body || {};
 
-    if (!patient_name || !patient_phone) {
-      return sendError(res, 400, 'patient_name and patient_phone are required');
+    const patientName = typeof patient_name === 'string' ? patient_name.trim() : '';
+    const patientPhone = typeof patient_phone === 'string' ? patient_phone.trim() : '';
+
+    if (patientName.length < 2 || patientName.length > 80) {
+      return sendError(res, 400, 'patient_name must be between 2 and 80 characters');
     }
 
-    if (!frontendUrl) {
-      return sendError(res, 500, 'FRONTEND_URL is required');
+    if (!/^\d{10}$/.test(patientPhone)) {
+      return sendError(res, 400, 'patient_phone must be exactly 10 digits');
     }
 
-    const clinic = await getClinicBySlug(slug);
+    const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
-      return sendError(res, 404, 'Clinic not found');
+      return undefined;
     }
 
     const { data, error } = await supabase.rpc('create_token', {
       p_clinic_id: clinic.id,
-      p_patient_name: patient_name,
-      p_patient_phone: patient_phone,
+      p_patient_name: patientName,
+      p_patient_phone: patientPhone,
     });
 
     if (error) {
@@ -171,14 +109,25 @@ const createToken = async (req, res, next) => {
       return sendError(res, 500, 'Token creation failed');
     }
 
-    await sendSms(
-      patient_phone,
-      `Your token #${token.token_number} at ${clinic.name}. Track: ${frontendUrl}/q/${slug}/${token.id}`
-    );
+    logger.info({ tokenNumber: token.token_number }, 'token issued');
+
+    const notified = await notifier.notifyTokenIssued({
+      phone: patientPhone,
+      clinicName: clinic.name,
+      tokenNumber: token.token_number,
+      slug: clinic.slug,
+      tokenId: token.id,
+    });
 
     res.status(201).json({
       success: true,
-      data: token,
+      data: {
+        ...token,
+        tracking_url: notifier.trackingUrl(clinic.slug, token.id),
+        // Only claim delivery when a real message actually went out, so the
+        // desk is never told to rely on a WhatsApp the patient never got.
+        notified: notified && notifier.isWhatsAppEnabled,
+      },
     });
   } catch (error) {
     next(error);
@@ -187,11 +136,10 @@ const createToken = async (req, res, next) => {
 
 const getTodayQueue = async (req, res, next) => {
   try {
-    const { slug } = req.params;
-    const clinic = await getClinicBySlug(slug);
+    const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
-      return sendError(res, 404, 'Clinic not found');
+      return undefined;
     }
 
     const tokens = await getTodayTokens(clinic.id);
@@ -201,6 +149,12 @@ const getTodayQueue = async (req, res, next) => {
       success: true,
       data: {
         tokens,
+        clinic: {
+          id: clinic.id,
+          name: clinic.name,
+          slug: clinic.slug,
+          doctor_name: clinic.doctor_name,
+        },
         current_token_number: context.current_token_number,
         waiting_count: context.waiting_count,
       },
@@ -212,19 +166,35 @@ const getTodayQueue = async (req, res, next) => {
 
 const callInToken = async (req, res, next) => {
   try {
-    const { slug, tokenId } = req.params;
-    const clinic = await getClinicBySlug(slug);
+    const { tokenId } = req.params;
+    const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
-      return sendError(res, 404, 'Clinic not found');
+      return undefined;
     }
+
+    // Confirm the token belongs to this clinic before closing anyone out, so a
+    // bad id cannot end the visit of whoever is currently being seen.
+    const { data: existingToken, error: lookupError } = await supabase
+      .from('tokens')
+      .select('id')
+      .eq('id', tokenId)
+      .eq('clinic_id', clinic.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      return sendError(res, 400, lookupError.message);
+    }
+
+    if (!existingToken) {
+      return sendError(res, 404, 'Token not found');
+    }
+
+    await closeOutInProgress(clinic.id, tokenId);
 
     const { data, error } = await supabase
       .from('tokens')
-      .update({
-        status: 'in_progress',
-        called_in_at: new Date().toISOString(),
-      })
+      .update({ status: 'in_progress', called_in_at: new Date().toISOString() })
       .eq('id', tokenId)
       .eq('clinic_id', clinic.id)
       .select('*')
@@ -237,37 +207,38 @@ const callInToken = async (req, res, next) => {
     if (!data) {
       return sendError(res, 404, 'Token not found');
     }
+
+    logger.info({ tokenNumber: data.token_number }, 'token called in');
 
     const nextWaitingToken = await getNextWaitingToken(clinic.id);
 
     if (nextWaitingToken) {
-      await sendSms(
-        nextWaitingToken.patient_phone,
-        `You're next! Current token: #${data.token_number}. Head to the clinic now.`
-      );
+      await notifier.notifyYourTurn({
+        phone: nextWaitingToken.patient_phone,
+        clinicName: clinic.name,
+        tokenNumber: nextWaitingToken.token_number,
+        currentTokenNumber: data.token_number,
+      });
     }
 
-    res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
 };
 
-const markNoShow = async (req, res, next) => {
+const setTokenStatus = (status, logMessage) => async (req, res, next) => {
   try {
-    const { slug, tokenId } = req.params;
-    const clinic = await getClinicBySlug(slug);
+    const { tokenId } = req.params;
+    const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
-      return sendError(res, 404, 'Clinic not found');
+      return undefined;
     }
 
     const { data, error } = await supabase
       .from('tokens')
-      .update({ status: 'no_show' })
+      .update({ status })
       .eq('id', tokenId)
       .eq('clinic_id', clinic.id)
       .select('*')
@@ -281,22 +252,26 @@ const markNoShow = async (req, res, next) => {
       return sendError(res, 404, 'Token not found');
     }
 
-    res.json({
-      success: true,
-      data,
-    });
+    logger.info({ tokenNumber: data.token_number }, logMessage);
+
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
 };
 
+const completeToken = setTokenStatus('done', 'token completed');
+const markNoShow = setTokenStatus('no_show', 'token marked no-show');
+
+// Public: reachable by anyone holding the tracking link, so it must not leak
+// the patient's phone number.
 const getToken = async (req, res, next) => {
   try {
-    const { slug, tokenId } = req.params;
-    const clinic = await getClinicBySlug(slug);
+    const { tokenId } = req.params;
+    const clinic = await resolveClinic(req, res);
 
     if (!clinic) {
-      return sendError(res, 404, 'Clinic not found');
+      return undefined;
     }
 
     const { data: token, error } = await supabase
@@ -316,19 +291,19 @@ const getToken = async (req, res, next) => {
 
     const tokens = await getTodayTokens(clinic.id);
     const context = getQueueContext(tokens);
-    const patientsAhead = tokens.filter(
-      (todayToken) =>
-        todayToken.status === 'waiting' &&
-        todayToken.token_number < token.token_number
-    ).length;
 
     res.json({
       success: true,
       data: {
-        token,
+        token: toPublicToken(token),
+        clinic: {
+          name: clinic.name,
+          slug: clinic.slug,
+          doctor_name: clinic.doctor_name,
+        },
         current_token_number: context.current_token_number,
         waiting_count: context.waiting_count,
-        patients_ahead: patientsAhead,
+        patients_ahead: countPatientsAhead(tokens, token),
       },
     });
   } catch (error) {
@@ -338,10 +313,11 @@ const getToken = async (req, res, next) => {
 
 module.exports = {
   healthCheck,
-  createClinic,
+  getClinic,
   createToken,
   getTodayQueue,
   callInToken,
+  completeToken,
   markNoShow,
   getToken,
 };

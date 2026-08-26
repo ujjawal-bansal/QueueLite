@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: queuelite-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render provides PORT; the app reads it automatically.
+      - key: FRONTEND_URL
+        sync: false        # https://your-app.vercel.app
+      - key: CLINIC_SLUG
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: STAFF_PASSCODE_HASH
+        sync: false
+      - key: SESSION_TTL_HOURS
+        value: "12"
+      - key: NOTIFIER
+        value: whatsapp
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_TEMPLATE_TOKEN_ISSUED
+        value: queue_token_issued
+      - key: WHATSAPP_TEMPLATE_YOUR_TURN
+        value: queue_your_turn
+      - key: WHATSAPP_COUNTRY_CODE
+        value: "91"
