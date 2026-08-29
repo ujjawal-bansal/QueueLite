@@ -65,6 +65,37 @@ const notifyYourTurn = async ({ phone, clinicName, tokenNumber, currentTokenNumb
   );
 };
 
+/**
+ * The "start heading over" nudge, sent while the patient still has a few people
+ * in front of them. This is the message a hundred-patient day runs on: it is
+ * what lets someone wait at home instead of in the corridor.
+ *
+ * Optional by design. Meta has to approve the template before it can be sent,
+ * so until WHATSAPP_TEMPLATE_HEADS_UP names an approved one the nudge stays
+ * off and the turn notification still goes out.
+ */
+const notifyHeadsUp = async ({ phone, clinicName, tokenNumber, ahead }) => {
+  if (!useWhatsApp) {
+    logger.info(
+      { to: '[redacted]', tokenNumber, ahead },
+      `[notifier stub] heads up -> #${tokenNumber}, ${ahead} ahead at ${clinicName}`
+    );
+    return true;
+  }
+
+  if (!env.whatsapp.templateHeadsUp) {
+    logger.debug({ tokenNumber }, 'heads-up template not configured, skipping');
+    return false;
+  }
+
+  return safely('heads-up notification', () =>
+    whatsapp.sendTemplate(phone, env.whatsapp.templateHeadsUp, [
+      String(tokenNumber),
+      String(ahead),
+    ])
+  );
+};
+
 // Replies to an inbound patient message, inside the 24h service window.
 const replyToPatient = async (phone, body) => {
   if (!useWhatsApp) {
@@ -78,7 +109,12 @@ const replyToPatient = async (phone, body) => {
 module.exports = {
   notifyTokenIssued,
   notifyYourTurn,
+  notifyHeadsUp,
   replyToPatient,
   trackingUrl,
   isWhatsAppEnabled: useWhatsApp,
+  // Whether the heads-up nudge can actually be delivered. On WhatsApp that
+  // needs an approved template; without one the reminder engine skips it
+  // rather than marking patients as reminded.
+  canSendHeadsUp: !useWhatsApp || Boolean(env.whatsapp.templateHeadsUp),
 };

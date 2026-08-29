@@ -90,33 +90,37 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const server = app.listen(env.port, () => {
-  logger.info(
-    { port: env.port, clinic: env.clinicSlug, notifier: env.notifier, env: env.nodeEnv },
-    'QueueLite backend started'
-  );
-});
-
-// Let in-flight requests finish before the process goes away on redeploy.
-const shutdown = (signal) => () => {
-  logger.info({ signal }, 'shutting down');
-
-  server.close(() => {
-    logger.info('closed cleanly');
-    process.exit(0);
+// Only bind a port when run as the service. Requiring this file to drive the
+// app in a test must not leave a listener behind.
+if (require.main === module) {
+  const server = app.listen(env.port, () => {
+    logger.info(
+      { port: env.port, clinic: env.clinicSlug, notifier: env.notifier, env: env.nodeEnv },
+      'QueueLite backend started'
+    );
   });
 
-  setTimeout(() => {
-    logger.error('forced shutdown after timeout');
-    process.exit(1);
-  }, 10000).unref();
-};
+  // Let in-flight requests finish before the process goes away on redeploy.
+  const shutdown = (signal) => () => {
+    logger.info({ signal }, 'shutting down');
 
-process.on('SIGTERM', shutdown('SIGTERM'));
-process.on('SIGINT', shutdown('SIGINT'));
+    server.close(() => {
+      logger.info('closed cleanly');
+      process.exit(0);
+    });
 
-process.on('unhandledRejection', (reason) => {
-  logger.error({ err: { message: String(reason) } }, 'unhandled rejection');
-});
+    setTimeout(() => {
+      logger.error('forced shutdown after timeout');
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on('SIGTERM', shutdown('SIGTERM'));
+  process.on('SIGINT', shutdown('SIGINT'));
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ err: { message: String(reason) } }, 'unhandled rejection');
+  });
+}
 
 module.exports = app;

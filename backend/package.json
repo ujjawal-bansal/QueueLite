@@ -1,7 +1,7 @@
 {
-  "name": "backend",
+  "name": "queuelite-api",
   "version": "1.0.0",
-  "description": "QueueLite backend - clinic token queue API",
+  "description": "QueueLite API - walk-in token queue for Dev Eye Care, Moradabad",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -9,11 +9,10 @@
     "test": "node --test tests/*.test.js",
     "generate-secrets": "node scripts/generate-secrets.js",
     "hash-passcode": "node scripts/hash-passcode.js",
-    "test-whatsapp": "node scripts/test-whatsapp.js"
+    "test-whatsapp": "node scripts/test-whatsapp.js",
+    "generate-recovery": "node scripts/generate-recovery.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "type": "commonjs",
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
@@ -32,5 +31,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "private": true
 }

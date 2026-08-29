@@ -55,7 +55,33 @@ const env = {
   }),
   sessionTtlHours: Number(optional('SESSION_TTL_HOURS', '12')),
 
+  // Break-glass sign-in for the morning the desk cannot remember the passcode.
+  // Optional: unset means the recovery route is off entirely rather than
+  // present-but-unusable, so there is no second door unless one is asked for.
+  staffRecoveryCodeHash: optional('STAFF_RECOVERY_CODE_HASH', ''),
+
   notifier,
+
+  // How many patients ahead trigger the "you're close, start heading over"
+  // reminder. On a 100-patient day this is the message that matters: the turn
+  // notification alone arrives when the patient needs to already be in the
+  // room, which is useless to someone who went home to wait.
+  reminderLeadPatients: Number(optional('REMINDER_LEAD_PATIENTS', '3')),
+
+  // How long the clinic budgets per patient. Every wait estimate is built from
+  // this. The clinic row's avg_consult_minutes overrides it.
+  avgConsultMinutes: Number(optional('AVG_CONSULT_MINUTES', '15')),
+
+  // Whether to override that figure with the pace actually measured today.
+  //
+  // Off by default, and deliberately so. A measured median is only better than
+  // the clinic's own number once the day has real consultations behind it; a
+  // handful of quick call-ins early on produces a confident-looking figure that
+  // is far too optimistic, and the desk repeats it to patients. Turn this on
+  // once the clinic is happy the measured number matches the room.
+  useMeasuredPace: optional('USE_MEASURED_PACE', 'false').toLowerCase() === 'true',
+
+
   whatsapp: {
     phoneNumberId: required('WHATSAPP_PHONE_NUMBER_ID', { when: useWhatsApp }),
     accessToken: required('WHATSAPP_ACCESS_TOKEN', { when: useWhatsApp }),
@@ -67,6 +93,9 @@ const env = {
     graphVersion: optional('WHATSAPP_GRAPH_VERSION', 'v21.0'),
     templateTokenIssued: optional('WHATSAPP_TEMPLATE_TOKEN_ISSUED', 'queue_token_issued'),
     templateYourTurn: optional('WHATSAPP_TEMPLATE_YOUR_TURN', 'queue_your_turn'),
+    // Optional: leave unset until Meta approves the template and the heads-up
+    // reminder simply stays off, rather than failing a send on every call-in.
+    templateHeadsUp: optional('WHATSAPP_TEMPLATE_HEADS_UP', ''),
     templateLocale: optional('WHATSAPP_TEMPLATE_LOCALE', 'en'),
     countryCode: optional('WHATSAPP_COUNTRY_CODE', '91'),
   },
@@ -79,6 +108,30 @@ if (env.sessionSecret && env.sessionSecret.length < 32) {
 if (!Number.isFinite(env.port) || env.port <= 0) {
   problems.push('  PORT must be a positive number');
 }
+
+// A malformed recovery hash would otherwise surface as a 500 at the exact
+// moment someone locked out of the clinic tries to use it. The most likely
+// mistake by far is pasting the code where the hash belongs, so say that.
+if (env.staffRecoveryCodeHash) {
+  const parts = env.staffRecoveryCodeHash.split('$');
+
+  if (parts.length !== 3 || parts[0] !== 'scrypt' || parts[2].length !== 128) {
+    problems.push(
+      '  STAFF_RECOVERY_CODE_HASH is malformed - it must be the ' +
+        '`scrypt$<salt>$<hash>` line printed by `npm run generate-recovery`, ' +
+        'not the recovery code itself'
+    );
+  }
+}
+
+if (!Number.isInteger(env.reminderLeadPatients) || env.reminderLeadPatients < 0) {
+  problems.push('  REMINDER_LEAD_PATIENTS must be a whole number of patients (0 disables it)');
+}
+
+if (!Number.isFinite(env.avgConsultMinutes) || env.avgConsultMinutes <= 0) {
+  problems.push('  AVG_CONSULT_MINUTES must be a positive number');
+}
+
 
 if (isProduction && env.frontendUrl.startsWith('http://')) {
   problems.push('  FRONTEND_URL must use https in production');

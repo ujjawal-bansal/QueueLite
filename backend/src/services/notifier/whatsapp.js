@@ -6,13 +6,17 @@ const { whatsapp: config } = env;
 // Meta expects E.164 without the leading "+". A bare 10-digit Indian number
 // gets the country code prefixed; anything already longer is passed through.
 const toE164 = (phone) => {
-  const digits = String(phone || '').replace(/\D/g, '');
+  // Leading zeros come off first: "0 63966 34403" is a ten-digit number behind
+  // a zero, and stripping afterwards would leave it with no country code.
+  const digits = String(phone || '')
+    .replace(/\D/g, '')
+    .replace(/^0+/, '');
 
   if (digits.length === 10) {
     return `${config.countryCode}${digits}`;
   }
 
-  return digits.replace(/^0+/, '');
+  return digits;
 };
 
 const graphUrl = () =>

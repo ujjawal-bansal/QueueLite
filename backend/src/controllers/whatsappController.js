@@ -4,13 +4,13 @@ const logger = require('../utils/logger');
 const notifier = require('../services/notifier');
 const {
   getClinicBySlug,
-  getTodayTokens,
+  getQueueState,
   findActiveTokenByPhone,
-  getQueueContext,
   countPatientsAhead,
+  estimateReadyAt,
+  isAfterClosing,
 } = require('../services/queueService');
-
-const MINUTES_PER_PATIENT = 5;
+const { formatIstClock } = require('../utils/time');
 
 /**
  * Meta's one-time subscription handshake: echo back hub.challenge when the
@@ -60,31 +60,46 @@ const buildStatusReply = async (clinic, phone) => {
   if (!token) {
     return (
       `We could not find an active token for this number at ${clinic.name} today. ` +
-      'Please check with the front desk.'
+      `Please check with the front desk${clinic.phone ? ` or call ${clinic.phone}` : ''}.`
     );
   }
 
-  const tokens = await getTodayTokens(clinic.id);
-  const context = getQueueContext(tokens);
+  const state = await getQueueState(clinic);
   const link = notifier.trackingUrl(clinic.slug, token.id);
 
   if (token.status === 'in_progress') {
     return `It's your turn now - token #${token.token_number}. Please go in.`;
   }
 
-  const ahead = countPatientsAhead(tokens, token);
-  const nowServing = context.current_token_number
-    ? `Now serving #${context.current_token_number}.`
+  const ahead = countPatientsAhead(state.tokens, token);
+  const nowServing = state.current_token_number
+    ? `Now serving #${state.current_token_number}.`
     : 'The queue has not started yet.';
 
   if (ahead === 0) {
     return `You're next - token #${token.token_number}. ${nowServing} Track: ${link}`;
   }
 
+  const aheadLabel = `${ahead} ${ahead === 1 ? 'patient' : 'patients'} ahead of you`;
+  const readyAt = estimateReadyAt(ahead, state.minutes_per_patient);
+
+  // Past closing the arithmetic still produces a time, but it is a time the
+  // clinic will not be open at. Say so plainly instead of quoting it.
+  if (isAfterClosing(readyAt, clinic)) {
+    return (
+      `Your token is #${token.token_number}. ${nowServing} ${aheadLabel}, ` +
+      'which is more than we can see before closing today. Please call the ' +
+      `front desk${clinic.phone ? ` on ${clinic.phone}` : ''} to check. Track: ${link}`
+    );
+  }
+
+  // A clock time is what someone forty back can actually act on. "Roughly 240
+  // minutes" needs arithmetic before it means anything; "around 3:40 pm" tells
+  // them whether they have time to go home.
   return (
     `Your token is #${token.token_number}. ${nowServing} ` +
-    `${ahead} ${ahead === 1 ? 'patient' : 'patients'} ahead of you, roughly ` +
-    `${ahead * MINUTES_PER_PATIENT} minutes. Track: ${link}`
+    `${aheadLabel} - around ${formatIstClock(readyAt)}. ` +
+    `We'll message you when you're close. Track: ${link}`
   );
 };
 
