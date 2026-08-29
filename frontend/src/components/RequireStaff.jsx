@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getSession, login } from '../api/queue'
+import { getSession, login, recoverAccess } from '../api/queue'
 
 /**
  * Gates the staff dashboard. The session itself lives in an httpOnly cookie the
@@ -8,15 +8,22 @@ import { getSession, login } from '../api/queue'
 function RequireStaff({ children }) {
   const mountedRef = useRef(false)
   const [state, setState] = useState('checking')
+  const [session, setSession] = useState(null)
   const [passcode, setPasscode] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showRecovery, setShowRecovery] = useState(false)
+  const [recoveryCode, setRecoveryCode] = useState('')
+  const [recoveryError, setRecoveryError] = useState('')
+  const [recoveryUnavailable, setRecoveryUnavailable] = useState(false)
+  const [isRecovering, setIsRecovering] = useState(false)
 
   const check = useCallback(async () => {
     try {
-      await getSession()
+      const data = await getSession()
 
       if (mountedRef.current) {
+        setSession(data)
         setState('signed-in')
       }
     } catch {
@@ -65,6 +72,42 @@ function RequireStaff({ children }) {
     }
   }
 
+  async function handleRecover(event) {
+    event.preventDefault()
+
+    if (!recoveryCode.trim()) {
+      setRecoveryError('Enter the recovery code')
+      return
+    }
+
+    setIsRecovering(true)
+    setRecoveryError('')
+
+    try {
+      const data = await recoverAccess(recoveryCode.trim())
+
+      if (mountedRef.current) {
+        setRecoveryCode('')
+        setSession(data)
+        setState('signed-in')
+      }
+    } catch (recoverError) {
+      if (mountedRef.current) {
+        // The route is absent, not forbidden, when no code is configured - so
+        // show the manual reset steps rather than a form that cannot work.
+        if (recoverError.status === 404) {
+          setRecoveryUnavailable(true)
+        } else {
+          setRecoveryError(recoverError.message)
+        }
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsRecovering(false)
+      }
+    }
+  }
+
   if (state === 'checking') {
     return (
       <main className="login-page">
@@ -74,13 +117,28 @@ function RequireStaff({ children }) {
   }
 
   if (state === 'signed-in') {
+    // Signed in on the break-glass code. Said on every page, every time, until
+    // the passcode is actually reset - otherwise a clinic quietly runs on the
+    // recovery code for months and nobody remembers it was temporary.
+    if (session?.via === 'recovery') {
+      return (
+        <>
+          <p className="recovery-banner" role="status">
+            Signed in with the recovery code. Reset the staff passcode when the
+            clinic quietens down.
+          </p>
+          {children}
+        </>
+      )
+    }
+
     return children
   }
 
   return (
     <main className="login-page">
       <div className="login-card">
-        <h1>QueueLite</h1>
+        <h1>Dev Eye Care</h1>
         <p>Enter the clinic passcode to open the front desk.</p>
 
         <form onSubmit={handleSubmit} noValidate>
@@ -105,6 +163,80 @@ function RequireStaff({ children }) {
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        {/* Forgetting the passcode used to be a dead end mid-clinic. */}
+        {!showRecovery ? (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setShowRecovery(true)}
+          >
+            Forgot the passcode?
+          </button>
+        ) : (
+          <div className="recovery-panel">
+            {recoveryUnavailable ? (
+              <>
+                <h2>No recovery code is set up</h2>
+                <p>
+                  Ask whoever manages the deployment to run{' '}
+                  <code>npm run hash-passcode</code> in the backend, update{' '}
+                  <code>STAFF_PASSCODE_HASH</code> on the server and redeploy.
+                </p>
+                <p>
+                  To avoid this next time, they can run{' '}
+                  <code>npm run generate-recovery</code> and keep the printed
+                  code at the desk.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>Use the recovery code</h2>
+                <p>
+                  The printed code kept at the desk. It signs you in once so the
+                  clinic can keep running, but the passcode still needs resetting
+                  afterwards.
+                </p>
+
+                <form onSubmit={handleRecover} noValidate>
+                  <label>
+                    <span>Recovery code</span>
+                    <input
+                      type="password"
+                      value={recoveryCode}
+                      onChange={(event) => {
+                        setRecoveryCode(event.target.value)
+                        setRecoveryError('')
+                      }}
+                      autoComplete="one-time-code"
+                      aria-invalid={Boolean(recoveryError)}
+                    />
+                  </label>
+
+                  {recoveryError ? (
+                    <p className="form-error">{recoveryError}</p>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    className="secondary-button"
+                    disabled={isRecovering}
+                  >
+                    {isRecovering ? 'Checking...' : 'Sign In With Recovery Code'}
+                  </button>
+                </form>
+              </>
+            )}
+
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setShowRecovery(false)}
+            >
+              Back to passcode
+            </button>
+          </div>
+        )}
       </div>
     </main>
   )

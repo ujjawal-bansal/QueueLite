@@ -1,0 +1,5 @@
+# The patient tracker shows a patient's name to whoever holds the link, so
+# nothing here should be crawled. Reached by QR code, WhatsApp or the clinic's
+# own screen instead.
+User-agent: *
+Disallow: /

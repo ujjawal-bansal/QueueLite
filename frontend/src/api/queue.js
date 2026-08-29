@@ -111,6 +111,15 @@ export function login(passcode) {
   })
 }
 
+// Break-glass sign-in. 404 means no recovery code is configured for this
+// deployment, which the login screen shows as instructions instead of a form.
+export function recoverAccess(code) {
+  return request('/api/auth/recover', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
 export function logout() {
   return request('/api/auth/logout', { method: 'POST' })
 }
@@ -137,9 +146,19 @@ export function addPatient(slug, patientName, patientPhone) {
   })
 }
 
-export function callIn(slug, tokenId) {
-  return request(`/api/clinics/${slug}/tokens/${tokenId}/call-in`, {
+// Calls in whoever is at the front. The desk has no per-patient call button:
+// patients are seen in queue order, so there is one control, not one per row.
+// Not retried: it is a POST, and a repeat would call in two patients.
+export function callNext(slug) {
+  return request(`/api/clinics/${slug}/call-next`, { method: 'POST' })
+}
+
+// Puts a patient back in the queue with `places` more patients ahead of them,
+// counted from where they stand now.
+export function pushBackToken(slug, tokenId, places) {
+  return request(`/api/clinics/${slug}/tokens/${tokenId}/push-back`, {
     method: 'PATCH',
+    body: JSON.stringify({ places }),
   })
 }
 
@@ -157,6 +176,37 @@ export function restoreToken(slug, tokenId) {
 
 export function markNoShow(slug, tokenId) {
   return request(`/api/clinics/${slug}/tokens/${tokenId}/no-show`, {
+    method: 'PATCH',
+  })
+}
+
+// Public waiting-room board. `tokenNumber` optionally asks "where is number 47",
+// which is what a patient given only a number over the phone can look up.
+export function getBoard(slug, tokenNumber) {
+  const query = tokenNumber ? `?token=${encodeURIComponent(tokenNumber)}` : ''
+
+  return request(`/api/clinics/${slug}/board${query}`)
+}
+
+export function getFollowUps(slug) {
+  return request(`/api/clinics/${slug}/follow-ups`)
+}
+
+export function addFollowUp(slug, tokenId, days, note) {
+  return request(`/api/clinics/${slug}/tokens/${tokenId}/follow-up`, {
+    method: 'POST',
+    body: JSON.stringify({ days, note }),
+  })
+}
+
+export function completeFollowUp(slug, followUpId) {
+  return request(`/api/clinics/${slug}/follow-ups/${followUpId}/done`, {
+    method: 'PATCH',
+  })
+}
+
+export function cancelFollowUp(slug, followUpId) {
+  return request(`/api/clinics/${slug}/follow-ups/${followUpId}/cancel`, {
     method: 'PATCH',
   })
 }

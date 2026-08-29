@@ -1,3 +1,24 @@
+/* =========================================================================
+   QueueLite
+
+   One layout that fits a phone at the front desk and a laptop beside it, with
+   no switch to set. Two ideas do most of the work:
+
+   - Intrinsic sizing. Lists ask for a comfortable minimum and take as many
+     columns as fit, so the column count follows the space rather than a
+     breakpoint guess about the device.
+   - Container queries. A queue row cares how wide *it* is, not how wide the
+     window is - the same row is full-width on a phone and half a column on a
+     laptop, and it should lay itself out from that.
+
+   Media queries are left for genuine page-level structure: one column of
+   controls, or controls beside the list.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   1. Tokens
+   ------------------------------------------------------------------------- */
+
 :root {
   --bg: #f6f7f5;
   --panel: #ffffff;
@@ -11,21 +32,45 @@
   --red: #b44747;
   --red-soft: #f7e8e8;
   --blue: #155e75;
+  --amber: #7a4a06;
   --shadow: 0 10px 24px rgba(26, 43, 35, 0.08);
+  --shadow-sticky: 0 6px 16px rgba(26, 43, 35, 0.12);
+
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
 
+  --radius: 8px;
+  --radius-pill: 999px;
+
+  /* Fluid spacing: grows with the viewport rather than stepping at a
+     breakpoint, so nothing suddenly reflows mid-drag on a resizable window. */
+  --gap-xs: 6px;
+  --gap-sm: 10px;
+  --gap: clamp(12px, 2vw, 16px);
+  --gap-lg: clamp(16px, 3vw, 24px);
+  --pad-page: clamp(14px, 3vw, 24px);
+
+  /* Every tap target clears the 44px minimum, on any screen. */
+  --tap: 48px;
+  --tap-sm: 44px;
+
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font: 16px/1.45 var(--sans);
-  letter-spacing: 0;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+/* -------------------------------------------------------------------------
+   2. Base
+   ------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -35,16 +80,29 @@ body {
   background: var(--bg);
 }
 
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  /* Keeps a two-line clinic name from leaving one orphaned word. */
+  text-wrap: balance;
+}
+
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
-  letter-spacing: 0;
+  letter-spacing: inherit;
 }
 
 button {
-  min-height: 48px;
+  min-height: var(--tap);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
   font-weight: 800;
 }
@@ -55,334 +113,1117 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+a:focus-visible {
   outline: 3px solid rgba(21, 94, 117, 0.35);
   outline-offset: 2px;
 }
 
-#root {
+input {
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input);
+  color: var(--text);
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--red);
+}
+
+/* -------------------------------------------------------------------------
+   3. Page shells
+
+   Each page sets its own comfortable reading width; the shell handles the
+   rest, including the notch on a phone held in a case at the desk.
+   ------------------------------------------------------------------------- */
+
+.staff-dashboard,
+.report-page,
+.patient-page,
+.board-page,
+.home-page,
+.login-page,
+.not-found-page {
+  width: min(100%, var(--page-max, 560px));
   min-height: 100svh;
+  margin-inline: auto;
+  padding: var(--pad-page);
+  padding-bottom: calc(var(--pad-page) + env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--pad-page), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--pad-page), env(safe-area-inset-right, 0px));
 }
 
 .staff-dashboard {
-  width: min(100%, 560px);
-  min-height: 100svh;
-  margin: 0 auto;
-  padding: 18px 14px 28px;
+  --page-max: 1180px;
 }
+
+.report-page {
+  --page-max: 1180px;
+}
+
+.patient-page,
+.home-page,
+.login-page,
+.not-found-page {
+  --page-max: 560px;
+}
+
+.board-page {
+  --page-max: 680px;
+}
+
+/* A shared card. Everything raised off the background uses this. */
+.token-handoff,
+.serving-panel,
+.queue-stats,
+.add-patient,
+.waiting-list,
+.my-token,
+.patient-status,
+.queue-facts,
+.clinic-list,
+.clinic-contact,
+.login-card,
+.board-now,
+.board-lookup,
+.report-meta,
+.report-row,
+.follow-up-prompt,
+.undo-bar {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.token-handoff,
+.serving-panel,
+.queue-stats,
+.add-patient,
+.waiting-list,
+.my-token,
+.patient-status,
+.queue-facts,
+.clinic-list,
+.clinic-contact,
+.board-now,
+.board-lookup,
+.report-meta,
+.follow-up-prompt {
+  padding: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+/* -------------------------------------------------------------------------
+   4. Header
+   ------------------------------------------------------------------------- */
 
 .clinic-header {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 0 14px;
+  flex-wrap: wrap;
+  gap: var(--gap-sm) var(--gap);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: var(--gap);
 }
 
 .clinic-header h1 {
   margin: 0;
-  color: var(--text);
-  font-size: 1.6rem;
-  line-height: 1.12;
+  font-size: clamp(1.3rem, 1rem + 1.5vw, 1.75rem);
   font-weight: 850;
-  letter-spacing: 0;
+  line-height: 1.12;
 }
 
-.clinic-header p,
+.clinic-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.header-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  align-items: flex-end;
+  margin-left: auto;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  justify-content: flex-end;
+}
+
 .today-label {
   margin: 0;
   color: var(--muted);
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
 }
 
-.serving-panel,
-.add-patient,
-.waiting-list {
-  background: var(--panel);
+.signout-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-sm);
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
 }
+
+/* -------------------------------------------------------------------------
+   5. Dashboard layout
+
+   One column on a phone. Once there is room for a sidebar and a list side by
+   side, the controls move beside the queue and stay put while it scrolls.
+   ------------------------------------------------------------------------- */
+
+.dashboard-body {
+  display: grid;
+  gap: var(--gap);
+  align-items: start;
+}
+
+/* Both columns must be allowed to shrink: a grid child defaults to a minimum
+   of its content, so one long patient name would push the track wider than the
+   page and force the whole dashboard to scroll sideways. */
+.dashboard-col-primary,
+.dashboard-col-secondary {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .dashboard-body {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  }
+
+  .dashboard-col-primary {
+    position: sticky;
+    top: var(--gap);
+  }
+}
+
+/* On a phone, who is being seen and Call Next are reached for constantly and
+   were scrolling away above the list. */
+@media (max-width: 899px) {
+  .serving-panel {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    box-shadow: var(--shadow-sticky);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   6. Now serving
+   ------------------------------------------------------------------------- */
 
 .serving-panel {
-  margin-bottom: 14px;
-  padding: 18px;
+  container-type: inline-size;
+  container-name: dashboard-panel;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: center;
+  justify-content: space-between;
 }
 
-.serving-panel p {
-  margin: 0 0 8px;
+.serving-details {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.serving-details > p {
+  margin: 0;
   color: var(--muted);
-  font-size: 1.02rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.serving-details > strong {
+  display: block;
+  margin: 2px 0;
+  color: var(--green-dark);
+  font-size: clamp(2rem, 1.4rem + 2.5vw, 2.8rem);
+  font-weight: 850;
+  line-height: 1;
+}
+
+.serving-details .not-started {
+  color: var(--muted);
+  font-size: clamp(1.05rem, 0.9rem + 0.8vw, 1.3rem);
+}
+
+.serving-name {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+/* The only place queue actions live. Full width and stacked on a narrow phone,
+   in a row the moment the panel can hold three tappable buttons. */
+.serving-actions {
+  display: grid;
+  gap: var(--gap-sm);
+  flex: 1 1 100%;
+}
+
+@container dashboard-panel (min-width: 380px) {
+  .serving-actions {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.done-button {
+  padding: 0 18px;
+  background: var(--green);
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.call-next-button {
+  padding: 0 18px;
+  background: var(--blue);
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.call-next-button:disabled {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------------------------
+   7. Stats
+   ------------------------------------------------------------------------- */
+
+.queue-stats,
+.report-meta {
+  display: grid;
+  /* As many as fit, never fewer than two, never overflowing. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 84px), 1fr));
+  gap: var(--gap-sm);
+  text-align: center;
+}
+
+.queue-stats p,
+.report-meta p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
   font-weight: 800;
 }
 
-.serving-panel strong {
+.queue-stats strong,
+.report-meta strong {
+  font-size: clamp(1.15rem, 1rem + 0.6vw, 1.4rem);
+  font-weight: 850;
+}
+
+.stat-note {
   display: block;
-  color: var(--green-dark);
-  font-size: 4.2rem;
-  line-height: 0.95;
-  letter-spacing: 0;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-.serving-panel .not-started {
-  color: var(--text);
-  font-size: 2.25rem;
-  line-height: 1.08;
-}
-
-.add-patient,
-.waiting-list {
-  margin-top: 14px;
-  padding: 16px;
-}
+/* -------------------------------------------------------------------------
+   8. Forms
+   ------------------------------------------------------------------------- */
 
 .add-patient h2,
-.waiting-heading h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: 1.25rem;
-  line-height: 1.2;
+.waiting-list h2,
+.clinic-list h2,
+.board-lookup h2,
+.follow-up-group h2 {
+  margin: 0 0 var(--gap-sm);
+  font-size: clamp(1.1rem, 1rem + 0.4vw, 1.3rem);
   font-weight: 850;
-  letter-spacing: 0;
 }
 
-.add-patient form {
+.add-patient form,
+.login-card form,
+.recovery-panel form {
   display: grid;
-  gap: 14px;
-  margin-top: 14px;
+  gap: var(--gap);
 }
 
-.add-patient label {
+.add-patient label,
+.login-card label,
+.recovery-panel label,
+.follow-up-note-field {
   display: grid;
-  gap: 6px;
-  color: var(--text);
-  font-size: 1rem;
+  gap: var(--gap-xs);
+}
+
+.add-patient label > span,
+.login-card label > span,
+.recovery-panel label > span,
+.follow-up-note-field > span {
+  color: var(--muted);
+  font-size: 0.88rem;
   font-weight: 800;
 }
 
-.add-patient input {
-  min-height: 52px;
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--input);
-  color: var(--text);
-  padding: 0 14px;
-  font-size: 1.08rem;
-}
-
-.add-patient input[aria-invalid='true'] {
-  border-color: var(--red);
-}
-
-.add-patient small,
-.form-error,
-.error-banner {
+.add-patient small {
   color: var(--red);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1.05rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.link-button {
+  min-height: var(--tap-sm);
+  margin-top: var(--gap);
+  padding: 0;
+  background: none;
+  color: var(--blue);
+  font-size: 0.98rem;
+  text-decoration: underline;
+}
+
+.form-error,
+.success-message {
+  margin: 0;
   font-size: 0.95rem;
   font-weight: 750;
 }
 
-.add-patient small,
-.form-error,
-.success-message,
-.error-banner {
-  margin: 0;
+.form-error {
+  color: var(--red);
 }
 
 .success-message {
   color: var(--green-dark);
-  font-size: 1rem;
-  font-weight: 850;
 }
 
-.primary-button {
-  width: 100%;
-  min-height: 54px;
-  background: var(--blue);
-  color: #ffffff;
-  font-size: 1.08rem;
-}
+/* -------------------------------------------------------------------------
+   9. Waiting list
+
+   The list is intrinsically sized: one column when narrow, more when the
+   space allows, with no breakpoint deciding on the content's behalf.
+   ------------------------------------------------------------------------- */
 
 .waiting-heading {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+}
+
+.waiting-heading h2 {
+  margin: 0;
 }
 
 .waiting-heading span {
   color: var(--muted);
   font-size: 0.95rem;
   font-weight: 800;
-  white-space: nowrap;
 }
 
-.waiting-list ul {
+.queue-search {
+  width: 100%;
+  margin-top: var(--gap-sm);
+}
+
+.waiting-list ul,
+.no-show-list ul,
+.report-list {
   display: grid;
-  gap: 10px;
-  margin: 14px 0 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--gap-sm);
+  margin: var(--gap-sm) 0 0;
   padding: 0;
   list-style: none;
 }
 
-.queue-row {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
+/* Each row answers to its own width, not the window's: the same row is full
+   width on a phone and half a column on a laptop, and its contents should lay
+   out from that rather than from a guess about the device.
+   
+   Note the row styles itself by wrapping, not by querying: a container query
+   can only style a container's descendants, never the container itself. */
+.queue-row,
+.report-row {
+  container-type: inline-size;
+  container-name: row;
+  padding: var(--gap);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--panel-soft);
 }
 
-.token-details {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
+/* Details and actions share a line when both fit and stack when they do not,
+   decided by the row's real width with no breakpoint involved. */
+.queue-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  align-items: center;
 }
 
-.token-details strong {
+.report-row {
+  display: grid;
+  gap: var(--gap-sm);
+  align-content: space-between;
+}
+
+.token-details,
+.token-details-button {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
+.token-details-button {
+  min-height: 0;
+  cursor: pointer;
+}
+
+.token-details-button:hover strong {
+  text-decoration: underline;
+}
+
+.token-details strong,
+.token-details-button strong {
   color: var(--green-dark);
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+  font-weight: 850;
   line-height: 1;
 }
 
-.token-details span {
-  overflow-wrap: anywhere;
-  color: var(--text);
-  font-size: 1.1rem;
-  font-weight: 800;
-}
-
-.row-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px;
-  gap: 8px;
-}
-
-.call-button {
-  background: var(--green);
-  color: #ffffff;
-  font-size: 1.02rem;
-}
-
-.no-show-button {
-  background: var(--red-soft);
-  color: var(--red);
-  font-size: 0.95rem;
-}
-
-.empty-state {
-  display: grid;
-  min-height: 150px;
-  margin: 14px 0 0;
-  place-items: center;
-  color: var(--muted);
-  text-align: center;
-  font-size: 1.08rem;
-  font-weight: 800;
-}
-
-.error-banner {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid #efc7c7;
-  border-radius: 8px;
-  background: var(--red-soft);
-}
-
-@media (min-width: 520px) {
-  .staff-dashboard {
-    padding: 24px 18px 34px;
-  }
-
-  .clinic-header {
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
-  }
-
-  .queue-row {
-    grid-template-columns: minmax(0, 1fr) 228px;
-    align-items: center;
-  }
-}
-
-/* --- Now-serving panel with a Done action --- */
-
-.serving-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.serving-details {
-  min-width: 0;
-}
-
-.serving-name {
-  display: block;
-  margin-top: 6px;
-  color: var(--text);
+.token-details span,
+.token-details-button > span {
   font-size: 1.05rem;
   font-weight: 800;
   overflow-wrap: anywhere;
 }
 
-.done-button {
-  flex-shrink: 0;
-  padding: 0 18px;
+.row-position,
+.row-notified {
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.row-position {
+  color: var(--muted);
+}
+
+.row-notified {
+  color: var(--green-dark);
+}
+
+.row-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-sm);
+  flex: 1 1 200px;
+}
+
+/* Quiet: the row is tappable to re-send a tracking link, and this says so
+   without competing with the queue controls above. */
+.row-send-hint {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.queue-row:hover .row-send-hint {
+  color: var(--blue);
+}
+
+/* A report row's header crams three things onto one line; give it two when the
+   row is too narrow for that to read. */
+@container row (max-width: 320px) {
+  .report-row-main {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .report-row-main .status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+.call-button,
+.done-button,
+.no-show-button,
+.restore-button {
+  min-height: 52px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.call-button {
+  background: var(--green);
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+/* Bordered rather than pale: the flat version read as disabled next to the
+   solid Call In, and staff hesitated over it. */
+.no-show-button {
+  border: 2px solid var(--red);
+  background: var(--panel);
+  color: var(--red);
+  font-size: 0.95rem;
+}
+
+.restore-button {
+  border: 2px solid var(--blue);
+  background: var(--panel);
+  color: var(--blue);
+}
+
+.show-all-button,
+.section-toggle {
+  width: 100%;
+  margin-top: var(--gap-sm);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.no-show-list {
+  margin-top: var(--gap-lg);
+}
+
+.dashboard-footer {
+  margin: var(--gap-lg) 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------
+   10. Push back
+   ------------------------------------------------------------------------- */
+
+.push-back-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  align-items: center;
+  padding: var(--gap-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.push-back-picker > span,
+.follow-up-days > span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.push-back-choice {
+  min-width: 52px;
+  min-height: var(--tap-sm);
+  padding: 0 10px;
+  border: 2px solid var(--blue);
+  background: var(--panel);
+  color: var(--blue);
+  font-size: 1.02rem;
+}
+
+.push-back-choice:hover:not(:disabled),
+.push-back-choice-active {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.push-back-cancel {
+  min-width: var(--tap-sm);
+  min-height: var(--tap-sm);
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------------------------
+   11. Token handoff
+   ------------------------------------------------------------------------- */
+
+.handoff-heading {
+  display: flex;
+  gap: var(--gap);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.handoff-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.handoff-heading strong {
+  display: block;
+  color: var(--green-dark);
+  font-size: clamp(1.6rem, 1.3rem + 1.2vw, 2.1rem);
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.dismiss-button {
+  min-height: var(--tap-sm);
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.handoff-note {
+  margin: var(--gap) 0 var(--gap-sm);
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.handoff-scan-note {
+  margin-top: var(--gap);
+}
+
+.handoff-send,
+.contact-actions,
+.follow-up-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: var(--gap-sm);
+}
+
+.send-whatsapp,
+.send-sms,
+.contact-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.send-whatsapp {
+  background: #128c7e;
+  color: #ffffff;
+}
+
+.send-sms {
+  border: 2px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.contact-link {
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.handoff-qr {
+  display: block;
+  width: min(100%, 260px);
+  height: auto;
+  margin: 0 auto var(--gap);
+  border-radius: var(--radius);
+}
+
+.copy-button {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+/* -------------------------------------------------------------------------
+   12. Banners
+   ------------------------------------------------------------------------- */
+
+.error-banner,
+.reconnect-banner,
+.reminder-note {
+  margin: 0 0 var(--gap);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.error-banner {
+  border-color: #efc7c7;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.reconnect-banner {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.reminder-note {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+/* Deliberately hard to ignore: it should be uncomfortable to leave a clinic
+   running on the break-glass code. */
+.recovery-banner {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--amber);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.undo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--gap);
+  padding: var(--gap-xs) var(--gap-xs) var(--gap-xs) var(--gap);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.undo-button {
+  min-height: var(--tap-sm);
+  padding: 0 20px;
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.empty-state {
+  display: grid;
+  min-height: 120px;
+  margin: var(--gap) 0 0;
+  place-items: center;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------
+   13. Report
+   ------------------------------------------------------------------------- */
+
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--gap);
+}
+
+.report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+}
+
+.report-filter {
+  min-height: var(--tap-sm);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.report-filter-active {
+  border-color: var(--green);
   background: var(--green);
   color: #ffffff;
 }
 
-/* --- Patient queue-position page --- */
-
-.patient-page,
-.home-page,
-.not-found-page {
-  width: min(100%, 560px);
-  min-height: 100svh;
-  margin: 0 auto;
-  padding: 18px 14px 28px;
-}
-
-.my-token,
-.patient-status,
-.queue-facts,
-.clinic-list {
+.export-button {
+  min-height: var(--tap-sm);
+  padding: 0 18px;
+  border: 2px solid var(--blue);
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 18px;
-  margin-bottom: 14px;
+  color: var(--blue);
+  font-size: 0.95rem;
 }
+
+.report-row {
+  background: var(--panel);
+}
+
+.report-row-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--gap-sm);
+  align-items: center;
+}
+
+.report-row-main > strong {
+  color: var(--green-dark);
+  font-size: 1.4rem;
+  font-weight: 850;
+}
+
+.report-row-who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.report-name {
+  font-size: 1.02rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.report-phone {
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.report-row-times {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(50%, 70px), 1fr));
+  gap: var(--gap-xs);
+  margin: var(--gap-sm) 0 0;
+  padding-top: var(--gap-sm);
+  border-top: 1px solid var(--border);
+}
+
+.report-row-times div {
+  text-align: center;
+}
+
+.report-row-times dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.report-row-times dd {
+  margin: 2px 0 0;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.report-row.status-no_show {
+  border-left: 4px solid var(--red);
+}
+
+.report-row.status-done {
+  border-left: 4px solid var(--green);
+}
+
+/* -------------------------------------------------------------------------
+   14. Follow-ups
+   ------------------------------------------------------------------------- */
+
+.follow-up-prompt {
+  border: 2px solid var(--green);
+}
+
+.follow-up-prompt-head {
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--gap);
+}
+
+.follow-up-prompt-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.follow-up-prompt-head strong {
+  font-size: 1.15rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.follow-up-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  align-items: center;
+  margin-bottom: var(--gap);
+}
+
+.follow-up-custom {
+  width: 88px;
+  min-height: var(--tap-sm);
+  font-weight: 700;
+}
+
+.follow-up-note-field {
+  margin-bottom: var(--gap);
+}
+
+.follow-up-group {
+  margin-bottom: var(--gap-lg);
+}
+
+.follow-up-group h2 {
+  display: flex;
+  gap: var(--gap-xs);
+  align-items: center;
+}
+
+.follow-up-group h2 span {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.follow-up-row .report-row-main {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.follow-up-due {
+  font-size: 0.96rem;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.follow-up-due small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.follow-up-note {
+  margin: var(--gap-sm) 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--panel-soft);
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.follow-up-actions {
+  margin-top: var(--gap-sm);
+}
+
+/* A patient who did not come back is the one to chase. */
+.follow-up-row.follow-up-overdue {
+  border-left: 4px solid var(--red);
+}
+
+.follow-up-row.follow-up-today {
+  border-left: 4px solid var(--green);
+}
+
+/* -------------------------------------------------------------------------
+   15. Patient tracker
+   ------------------------------------------------------------------------- */
 
 .my-token {
   text-align: center;
 }
 
 .my-token p {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--muted);
-  font-size: 1.02rem;
+  font-size: 0.9rem;
   font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .my-token strong {
   display: block;
+  margin: var(--gap-xs) 0;
   color: var(--green-dark);
-  font-size: 4.2rem;
-  line-height: 0.95;
+  font-size: clamp(3.5rem, 2rem + 12vw, 6rem);
+  font-weight: 850;
+  line-height: 1;
 }
 
 .status-pill {
   display: inline-block;
-  margin-top: 12px;
-  padding: 6px 14px;
-  border-radius: 999px;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
   background: var(--panel-soft);
   color: var(--text);
   font-size: 0.95rem;
@@ -394,363 +1235,334 @@ input:focus-visible {
   color: #ffffff;
 }
 
+.status-pill-done {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
 .status-pill-no_show {
   background: var(--red-soft);
   color: var(--red);
 }
 
 .patient-status h2 {
-  margin: 0 0 8px;
-  color: var(--text);
-  font-size: 1.45rem;
-  line-height: 1.18;
+  margin: 0 0 var(--gap-xs);
+  font-size: clamp(1.2rem, 1rem + 1.2vw, 1.6rem);
   font-weight: 850;
+  line-height: 1.2;
 }
 
 .patient-status p {
   margin: 0;
   color: var(--muted);
-  font-size: 1.02rem;
+  font-size: 1rem;
   font-weight: 650;
+  line-height: 1.45;
 }
 
+/* The one moment worth colouring: the patient is being called in. */
 .status-in_progress .patient-status h2 {
   color: var(--green-dark);
 }
 
 .queue-facts {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+  gap: var(--gap-sm);
   text-align: center;
 }
 
 .queue-facts p {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.queue-facts strong {
+  font-size: clamp(1.3rem, 1.1rem + 0.8vw, 1.6rem);
+  font-weight: 850;
+}
+
+.clinic-address {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.clinic-hours {
+  margin: var(--gap-xs) 0 0;
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.contact-actions {
+  margin-top: var(--gap);
+}
+
+.patient-footer {
+  margin: 0;
+  padding: var(--gap-xs) 2px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------
+   16. Waiting-room board
+
+   Read from across a room and from a hand, so the headline number is sized
+   in viewport units between a sensible floor and ceiling.
+   ------------------------------------------------------------------------- */
+
+.board-header {
+  padding-bottom: var(--gap);
+  text-align: center;
+}
+
+.board-header h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1rem + 1.6vw, 1.8rem);
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.board-header p {
+  margin: var(--gap-xs) 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.board-now {
+  padding: var(--gap-lg) var(--gap);
+  text-align: center;
+}
+
+.board-now p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.board-now strong {
+  display: block;
+  margin: var(--gap-xs) 0;
+  color: var(--green-dark);
+  font-size: clamp(4rem, 2rem + 18vw, 9rem);
+  font-weight: 850;
+  line-height: 1;
+}
+
+.board-now span {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.board-recent {
+  margin-bottom: var(--gap);
+  padding: var(--gap-sm) var(--gap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  text-align: center;
+}
+
+.board-recent p {
+  margin: 0 0 var(--gap-xs);
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 800;
 }
 
-.queue-facts strong {
-  color: var(--text);
-  font-size: 1.6rem;
-  font-weight: 850;
+.board-recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  justify-content: center;
 }
 
-.patient-footer {
-  margin: 0;
-  padding: 4px 2px;
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 650;
-  text-align: center;
-}
-
-/* --- Home + not found --- */
-
-.clinic-list h2 {
-  margin: 0 0 12px;
-  color: var(--text);
-  font-size: 1.25rem;
-  font-weight: 850;
-}
-
-.clinic-list ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.clinic-list .call-button {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 8px;
-  text-decoration: none;
+.board-recent-list span {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  font-size: 1rem;
   font-weight: 800;
 }
 
-.not-found-page h1 {
-  margin: 0 0 10px;
-  color: var(--text);
-  font-size: 1.6rem;
+.board-lookup form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 128px);
+  gap: var(--gap-sm);
+}
+
+.board-lookup input {
+  min-height: 52px;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.board-result {
+  margin-top: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  text-align: center;
+}
+
+.board-result strong {
+  display: block;
+  color: var(--green-dark);
+  font-size: clamp(2rem, 1.5rem + 2vw, 2.6rem);
   font-weight: 850;
+  line-height: 1;
 }
 
-.not-found-page .primary-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  margin-top: 14px;
-  text-decoration: none;
+.board-result-status {
+  margin: var(--gap-xs) 0 0;
+  font-size: 1.05rem;
+  font-weight: 800;
 }
 
-/* --- Staff sign-in --- */
+.board-result-detail {
+  margin: var(--gap-xs) 0 0;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.board-result-missing {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.board-clear {
+  min-height: var(--tap-sm);
+  margin-top: var(--gap-sm);
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* -------------------------------------------------------------------------
+   17. Home, login, not found
+   ------------------------------------------------------------------------- */
 
 .login-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: min(100%, 560px);
-  min-height: 100svh;
-  margin: 0 auto;
-  padding: 18px 14px;
+  display: grid;
+  place-items: center;
 }
 
 .login-card {
   width: 100%;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 24px 20px;
+  padding: var(--gap-lg);
 }
 
 .login-card h1 {
-  margin: 0 0 6px;
-  color: var(--text);
-  font-size: 1.7rem;
+  margin: 0 0 var(--gap-xs);
+  font-size: clamp(1.4rem, 1.2rem + 1vw, 1.8rem);
   font-weight: 850;
 }
 
 .login-card > p {
-  margin: 0 0 18px;
+  margin: 0 0 var(--gap-lg);
   color: var(--muted);
-  font-size: 1rem;
   font-weight: 650;
+  line-height: 1.45;
 }
 
-.login-card form {
-  display: grid;
-  gap: 14px;
+.recovery-panel {
+  margin-top: var(--gap-lg);
+  padding-top: var(--gap-lg);
+  border-top: 1px solid var(--border);
 }
 
-.login-card label {
-  display: grid;
-  gap: 6px;
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 800;
+.recovery-panel h2 {
+  margin: 0 0 var(--gap-xs);
+  font-size: 1.1rem;
+  font-weight: 850;
 }
 
-.login-card input {
-  min-height: 52px;
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--input);
-  color: var(--text);
-  padding: 0 14px;
-  font-size: 1.08rem;
-}
-
-.login-card input[aria-invalid='true'] {
-  border-color: var(--red);
-}
-
-/* --- Header controls --- */
-
-.clinic-header {
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.header-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.signout-button {
-  min-height: 38px;
-  padding: 0 14px;
-  background: var(--panel-soft);
-  color: var(--text);
-  font-size: 0.92rem;
-}
-
-/* --- Token handoff (QR + link) --- */
-
-.token-handoff {
-  background: var(--panel);
-  border: 1px solid var(--green);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 16px;
-  margin-bottom: 14px;
-  text-align: center;
-}
-
-.handoff-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  text-align: left;
-}
-
-.handoff-heading p {
-  margin: 0 0 2px;
+.recovery-panel p {
+  margin: 0 0 var(--gap-sm);
   color: var(--muted);
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
-.handoff-heading strong {
-  color: var(--green-dark);
-  font-size: 2.4rem;
-  line-height: 1;
-}
-
-.dismiss-button {
-  min-height: 40px;
-  padding: 0 16px;
-  background: var(--panel-soft);
-  color: var(--text);
-}
-
-.handoff-note {
-  margin: 12px 0 10px;
-  color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.94rem;
   font-weight: 650;
+  line-height: 1.45;
 }
 
-.handoff-qr {
-  display: block;
-  width: min(200px, 60%);
-  height: auto;
-  margin: 0 auto 12px;
-  border-radius: 6px;
-}
-
-.copy-button {
-  width: 100%;
+.recovery-panel code {
+  padding: 2px 6px;
+  border-radius: 4px;
   background: var(--panel-soft);
   color: var(--text);
-}
-
-/* Keep a long clinic/doctor name from colliding with the date block. */
-.clinic-header > div:first-child {
-  flex: 1;
-  min-width: 0;
-}
-
-.clinic-header h1 {
+  font-size: 0.88rem;
   overflow-wrap: anywhere;
 }
 
-/* --- Reconnect + undo feedback --- */
+.clinic-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-.reconnect-banner {
-  margin: 0 0 12px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--panel-soft);
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 800;
+.home-second-heading {
+  margin-top: var(--gap-lg);
+}
+
+.not-found-page {
+  display: grid;
+  place-items: center;
   text-align: center;
 }
 
-.undo-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 10px 10px 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 750;
+/* -------------------------------------------------------------------------
+   18. Preferences and print
+   ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-.undo-button {
-  flex-shrink: 0;
-  min-height: 42px;
-  padding: 0 20px;
-  background: var(--blue);
-  color: #ffffff;
-}
+/* The end-of-day report is a record a clinic may want on paper. */
+@media print {
+  .clinic-header .header-side,
+  .report-controls,
+  .signout-button,
+  .dashboard-footer {
+    display: none !important;
+  }
 
-/* Keep the two row actions far enough apart to be hard to mis-tap. */
-.row-actions {
-  gap: 10px;
-}
+  .report-page {
+    width: 100%;
+    padding: 0;
+  }
 
-/* --- Staff dashboard legibility fixes --- */
+  .report-row,
+  .report-meta,
+  .queue-stats {
+    border: 1px solid #999;
+    box-shadow: none;
+    break-inside: avoid;
+  }
 
-/* The pale No Show button read as disabled next to the solid Call In, so staff
-   hesitated over it. Give it a real border and darker text. */
-.no-show-button {
-  border: 2px solid var(--red);
-  background: var(--panel);
-  color: var(--red);
-}
-
-.no-show-button:disabled {
-  opacity: 0.45;
-}
-
-/* Stop the clinic name colliding with the date on narrow screens. */
-.clinic-header {
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.clinic-header h1 {
-  font-size: 1.45rem;
-}
-
-.today-label {
-  font-size: 0.92rem;
-  text-align: right;
-}
-
-.today-totals {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.95rem;
-  font-weight: 700;
-}
-
-/* Give the row actions room so Call In and No Show are hard to confuse. */
-.queue-row {
-  padding: 14px;
-}
-
-.row-actions {
-  gap: 12px;
-}
-
-.call-button,
-.no-show-button {
-  min-height: 50px;
-  padding: 0 18px;
-}
-
-/* Keep both action labels on one line; wrapping made the rows look broken. */
-.call-button,
-.no-show-button,
-.done-button {
-  white-space: nowrap;
-  padding: 0 14px;
-}
-
-.row-actions {
-  gap: 10px;
-}
-
-.call-button {
-  flex: 1;
+  .report-list {
+    grid-template-columns: 1fr;
+  }
 }
