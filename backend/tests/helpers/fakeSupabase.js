@@ -44,15 +44,29 @@ const createFakeSupabase = () => {
       this.inserted = {
         id: crypto.randomUUID(),
         created_at: new Date().toISOString(),
-        status: 'scheduled',
-        last_reminded_on: null,
-        completed_at: null,
+        ...(this.table === 'tokens'
+          ? {
+              status: 'waiting',
+              called_in_at: null,
+              completed_at: null,
+              heads_up_sent_at: null,
+              turn_notified_at: null,
+              queue_position: null,
+              follow_up_due_on: null,
+              follow_up_note: null,
+              follow_up_status: null,
+            }
+          : {}),
         ...row,
       };
       return this;
     }
 
     eq(column, value) {
+      if (column === 'token_day' && !tokenDayColumn) {
+        this.missingColumn = 'token_day';
+      }
+
       this.filters.push((row) => row[column] === value);
       return this;
     }
@@ -111,7 +125,53 @@ const createFakeSupabase = () => {
     }
 
     run() {
+      // Postgres reports an unknown column as 42703 whatever the statement is.
+      if (this.missingColumn) {
+        return {
+          data: null,
+          error: {
+            code: '42703',
+            message: `column tokens.${this.missingColumn} does not exist`,
+          },
+        };
+      }
+
       if (this.operation === 'insert') {
+        // Mirrors tokens_clinic_day_number_uniq. Without this the tests would
+        // pass while the database refused the very rows they exercise.
+        if (this.table === 'tokens') {
+          if (collideOnceOnCreate) {
+            collideOnceOnCreate = false;
+
+            return {
+              data: null,
+              error: {
+                code: '23505',
+                message:
+                  'duplicate key value violates unique constraint "tokens_clinic_day_number_uniq"',
+              },
+            };
+          }
+
+          const clash = db.tokens.some(
+            (row) =>
+              row.clinic_id === this.inserted.clinic_id &&
+              row.token_day === this.inserted.token_day &&
+              row.token_number === this.inserted.token_number
+          );
+
+          if (clash) {
+            return {
+              data: null,
+              error: {
+                code: '23505',
+                message:
+                  'duplicate key value violates unique constraint "tokens_clinic_day_number_uniq"',
+              },
+            };
+          }
+        }
+
         db[this.table].push(this.inserted);
 
         const copy = { ...this.inserted };
@@ -162,44 +222,13 @@ const createFakeSupabase = () => {
     }
   }
 
+  // Lets a test make the next token insert collide, the way two entries landing
+  // together would.
+  let collideOnceOnCreate = false;
+  // Reproduces a database that has not had migration 006 applied.
+  let tokenDayColumn = true;
+
   const rpcs = {
-    // Mirrors public.create_token: token numbers restart each Kolkata day.
-    create_token: ({ p_clinic_id, p_patient_name, p_patient_phone }) => {
-      const { start, end } = getIstTodayUtcRange();
-      const today = db.tokens.filter(
-        (row) =>
-          row.clinic_id === p_clinic_id &&
-          row.created_at >= start &&
-          row.created_at < end
-      );
-      const nextNumber =
-        today.reduce((max, row) => Math.max(max, row.token_number), 0) + 1;
-
-      const token = {
-        id: crypto.randomUUID(),
-        clinic_id: p_clinic_id,
-        token_number: nextNumber,
-        patient_name: p_patient_name,
-        patient_phone: p_patient_phone,
-        status: 'waiting',
-        created_at: new Date().toISOString(),
-        called_in_at: null,
-        completed_at: null,
-        heads_up_sent_at: null,
-        turn_notified_at: null,
-        // Null until the patient is pushed back, which is the case for
-        // everyone who turns up when they are called.
-        queue_position: null,
-        follow_up_due_on: null,
-        follow_up_note: null,
-        follow_up_status: null,
-      };
-
-      db.tokens.push(token);
-
-      return { ...token };
-    },
-
     // Mirrors public.call_in_token: closing out the previous patient and
     // calling in the next one happen together.
     call_in_token: ({ p_clinic_id, p_token_id }) => {
@@ -275,6 +304,12 @@ const createFakeSupabase = () => {
     setVanishBeforeCallIn: (value) => {
       vanishBeforeCallIn = value;
     },
+    setCollideOnceOnCreate: (value) => {
+      collideOnceOnCreate = value;
+    },
+    setTokenDayColumn: (value) => {
+      tokenDayColumn = value;
+    },
     from: (table) => new Query(table),
     rpc: async (name, args) => {
       counts.rpc += 1;
@@ -283,7 +318,13 @@ const createFakeSupabase = () => {
         return { data: null, error: new Error(`unknown rpc ${name}`) };
       }
 
-      return { data: rpcs[name](args), error: null };
+      try {
+        return { data: rpcs[name](args), error: null };
+      } catch (error) {
+        // PostgREST reports a constraint violation as an error object with the
+        // Postgres SQLSTATE, not as a thrown exception.
+        return { data: null, error: { message: error.message, code: error.code } };
+      }
     },
   };
 };

@@ -1,6 +1,7 @@
 const supabase = require('../config/supabase');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { getIstDateString } = require('../utils/time');
 const notifier = require('../services/notifier');
 const { runRemindersInBackground } = require('../services/reminderService');
 const {
@@ -9,6 +10,8 @@ const {
   invalidateQueue,
   getNextWaitingToken,
   countPatientsAhead,
+  nextTokenNumber,
+  supportsTokenDay,
   positionAfter,
   estimateReadyAt,
   isAfterClosing,
@@ -119,17 +122,51 @@ const createToken = async (req, res, next) => {
       return undefined;
     }
 
-    const { data, error } = await supabase.rpc('create_token', {
-      p_clinic_id: clinic.id,
-      p_patient_name: patientName,
-      p_patient_phone: patientPhone,
-    });
+    /**
+     * Issued here rather than by a stored function.
+     *
+     * The function that used to do this had a stale idea of when the clinic day
+     * began, so every patient after midnight was handed the previous day's last
+     * number. Two attempts to replace it silently did not take on this
+     * database, and a wrong token number is not a problem a patient discovers
+     * later: they are holding it, and so is somebody else.
+     *
+     * Correctness under two entries landing together comes from the unique
+     * index on (clinic, day, number), not from this read. A collision means
+     * somebody else took the number in between, so read again and take the
+     * next one.
+     */
+    const issue = async () => {
+      const tokenNumber = await nextTokenNumber(clinic.id);
+
+      return supabase
+        .from('tokens')
+        .insert({
+          clinic_id: clinic.id,
+          token_number: tokenNumber,
+          patient_name: patientName,
+          patient_phone: patientPhone,
+          status: 'waiting',
+          // Only once the column is known to exist. Sending it to a database
+          // that has not had migration 006 applied would fail the insert.
+          ...(supportsTokenDay() ? { token_day: getIstDateString() } : {}),
+        })
+        .select('*')
+        .maybeSingle();
+    };
+
+    let { data: token, error } = await issue();
+
+    // 23505 is the uniqueness constraint refusing a number already issued
+    // today. Three attempts covers any realistic collision at one front desk.
+    for (let attempt = 0; error?.code === '23505' && attempt < 3; attempt += 1) {
+      logger.warn({ attempt: attempt + 1 }, 'token number collided, taking the next');
+      ({ data: token, error } = await issue());
+    }
 
     if (error) {
       return sendError(res, 400, error.message);
     }
-
-    const token = Array.isArray(data) ? data[0] : data;
 
     if (!token || !token.id) {
       return sendError(res, 500, 'Token creation failed');

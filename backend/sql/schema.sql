@@ -40,6 +40,11 @@ create table if not exists public.tokens (
   status           text not null default 'waiting'
                    check (status in ('waiting', 'in_progress', 'done', 'no_show')),
   created_at       timestamptz not null default now(),
+  -- The Asia/Kolkata calendar day this token belongs to. Stored rather than
+  -- derived, so the day a token counts towards is written once and never
+  -- re-computed by anything that could disagree about the boundary.
+  token_day        date not null
+                   default ((now() + interval '330 minutes') at time zone 'UTC')::date,
   called_in_at     timestamptz,
   -- When the visit ended. The only honest record of a consultation's length;
   -- inferring it from when the next patient was called measures something else.
@@ -63,11 +68,15 @@ create table if not exists public.tokens (
   turn_notified_at timestamptz
 );
 
--- Every read is "this clinic, today, ordered by token number". Without the
--- token_number in the index Postgres sorts the whole day's rows on each of the
--- ~700 reads a full waiting room generates per minute.
-create index if not exists tokens_clinic_day_number_idx
-  on public.tokens (clinic_id, created_at, token_number);
+-- Two patients can never hold the same number on the same clinic day. This is
+-- the guarantee, not the numbering code: a wrong number is refused by the
+-- database rather than handed to somebody.
+create unique index if not exists tokens_clinic_day_number_uniq
+  on public.tokens (clinic_id, token_day, token_number);
+
+-- Every read is "this clinic, today, in queue order".
+create index if not exists tokens_clinic_day_order_idx
+  on public.tokens (clinic_id, token_day, queue_position, token_number);
 
 create index if not exists tokens_clinic_status_idx
   on public.tokens (clinic_id, status);
@@ -85,62 +94,14 @@ create index if not exists tokens_clinic_history_idx
   on public.tokens (clinic_id, created_at desc)
   where called_in_at is not null;
 
--- Start of the current Asia/Kolkata day, as a UTC timestamp.
-create or replace function public.ist_day_start()
-returns timestamptz
-language sql
-stable
-as $$
-  select date_trunc('day', now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata';
-$$;
-
--- Allocates the next token number for the clinic's current IST day and inserts
--- the token. The advisory lock serialises concurrent front-desk entries so two
--- patients cannot receive the same number.
-create or replace function public.create_token(
-  p_clinic_id     uuid,
-  p_patient_name  text,
-  p_patient_phone text
-)
-returns public.tokens
-language plpgsql
-as $$
-declare
-  v_day_start timestamptz := public.ist_day_start();
-  v_next      integer;
-  v_token     public.tokens;
-begin
-  perform pg_advisory_xact_lock(
-    hashtextextended(p_clinic_id::text || v_day_start::text, 0)
-  );
-
-  select coalesce(max(token_number), 0) + 1
-    into v_next
-    from public.tokens
-   where clinic_id = p_clinic_id
-     and created_at >= v_day_start
-     and created_at < v_day_start + interval '1 day';
-
-  insert into public.tokens (clinic_id, token_number, patient_name, patient_phone, status)
-  values (p_clinic_id, v_next, p_patient_name, p_patient_phone, 'waiting')
-  returning * into v_token;
-
-  return v_token;
-end;
-$$;
-
--- Kept for compatibility: the live project also exposes create_daily_token with
--- the same signature and purpose.
-create or replace function public.create_daily_token(
-  p_clinic_id     uuid,
-  p_patient_name  text,
-  p_patient_phone text
-)
-returns public.tokens
-language sql
-as $$
-  select * from public.create_token(p_clinic_id, p_patient_name, p_patient_phone);
-$$;
+-- Token numbers are allocated by the API, not here.
+--
+-- They used to come from a create_token function that derived the clinic day
+-- itself. It got the boundary wrong, so patients arriving after IST midnight
+-- were all issued the previous day's last number, and replacing the function on
+-- a live database proved unreliable. The API now reads the highest number for
+-- token_day and inserts the next one, with the unique index above making that
+-- safe when two entries land together.
 
 -- Closes out whoever is currently being seen and calls in the given token, in
 -- one transaction. The Node API currently does this in two statements instead;
@@ -153,7 +114,11 @@ returns public.tokens
 language plpgsql
 as $$
 declare
-  v_day_start timestamptz := public.ist_day_start();
+  -- Written out rather than calling a helper. An earlier migration defined
+  -- ist_day_start() and it does not exist on the live database, so nothing
+  -- here depends on a function having been created successfully.
+  v_day_start timestamptz := date_trunc('day', now() at time zone 'Asia/Kolkata')
+                               at time zone 'Asia/Kolkata';
   v_token     public.tokens;
 begin
   update public.tokens

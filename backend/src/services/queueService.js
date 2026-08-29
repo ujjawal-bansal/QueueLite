@@ -1,7 +1,12 @@
 const supabase = require('../config/supabase');
 const env = require('../config/env');
 const logger = require('../utils/logger');
-const { getIstTodayUtcRange, getIstInstantToday } = require('../utils/time');
+const {
+  getIstDateString,
+  getIstInstantToday,
+  getIstTodayUtcRange,
+  addIstDays,
+} = require('../utils/time');
 
 const ACTIVE_STATUSES = ['waiting', 'in_progress'];
 
@@ -26,7 +31,60 @@ const getClinicBySlug = async (slug) => {
   return data;
 };
 
+/**
+ * Whether the database has the token_day column yet.
+ *
+ * Null until the first query answers the question. Code and migrations do not
+ * land together - the API deploys on a push and the migration is run by hand -
+ * and the app must not be broken in the gap. Once migration 006 has been
+ * applied everywhere this probe and the fallbacks below can go.
+ */
+let hasTokenDay = null;
+
+const missingTokenDay = (error) =>
+  error?.code === '42703' && /token_day/.test(error.message || '');
+
+const noteMissingColumn = () => {
+  if (hasTokenDay !== false) {
+    logger.warn(
+      'tokens.token_day is missing; falling back to a created_at range. ' +
+        'Run backend/sql/migrations/006_daily_numbering.sql to restore the ' +
+        'uniqueness guarantee on token numbers.'
+    );
+  }
+
+  hasTokenDay = false;
+};
+
+/**
+ * Today's tokens.
+ *
+ * By the day stored on the row where that column exists: the day a token counts
+ * towards is written once when it is issued, so nothing re-derives it and
+ * nothing can disagree about where the boundary fell. Falling back to a range
+ * over created_at otherwise, which is the same window computed the same way.
+ */
 const fetchTodayTokens = async (clinicId) => {
+  if (hasTokenDay !== false) {
+    const { data, error } = await supabase
+      .from('tokens')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .eq('token_day', getIstDateString())
+      .order('token_number', { ascending: true });
+
+    if (!error) {
+      hasTokenDay = true;
+      return data || [];
+    }
+
+    if (!missingTokenDay(error)) {
+      throw error;
+    }
+
+    noteMissingColumn();
+  }
+
   const { start, end } = getIstTodayUtcRange();
 
   const { data, error } = await supabase
@@ -43,6 +101,9 @@ const fetchTodayTokens = async (clinicId) => {
 
   return data || [];
 };
+
+/** True once the database is known to carry token_day. */
+const supportsTokenDay = () => hasTokenDay === true;
 
 // One entry per clinic; this deployment serves exactly one, so the map never
 // grows. Holding the in-flight promise is what makes concurrent callers share a
@@ -161,6 +222,23 @@ const positionAfter = (tokens, token, places) => {
   }
 
   return (anchor + effectivePosition(follower)) / 2;
+};
+
+/**
+ * The number the next patient should be given today.
+ *
+ * Computed here rather than in a stored function. Two attempts to correct that
+ * function on this database silently did not take, and a wrong number is not
+ * something a patient finds out about later - they are holding it. The unique
+ * index on (clinic, day, number) is what makes this safe under two entries
+ * landing together; the caller retries on the collision.
+ */
+const nextTokenNumber = async (clinicId) => {
+  // Reads the day's tokens through the same path everything else uses, so the
+  // number is allocated against exactly the set the queue will show.
+  const tokens = await getTodayTokens(clinicId, { fresh: true });
+
+  return tokens.reduce((highest, token) => Math.max(highest, token.token_number), 0) + 1;
 };
 
 const getNextWaitingToken = async (clinicId) => {
@@ -375,9 +453,11 @@ const fetchHistoricalPace = async (clinicId) => {
   const { start } = getIstTodayUtcRange();
   const from = new Date(Date.parse(start) - HISTORY_DAYS * 24 * 60 * 60 * 1000);
 
+  // Deliberately a created_at range rather than token_day: this runs on a cold
+  // start, before any query has established whether the column exists.
   const { data, error } = await supabase
     .from('tokens')
-    .select('called_in_at')
+    .select('called_in_at, created_at')
     .eq('clinic_id', clinicId)
     .not('called_in_at', 'is', null)
     .gte('created_at', from.toISOString())
@@ -394,11 +474,12 @@ const fetchHistoricalPace = async (clinicId) => {
   const tokens = data || [];
 
   // Gaps must be computed within a day, never across the overnight break -
-  // otherwise every night counts as one enormous consultation.
+  // otherwise every night counts as one enormous consultation. The day is on
+  // the row, so no date arithmetic is needed to group by it.
   const byDay = new Map();
 
   tokens.forEach((token) => {
-    const day = new Date(token.called_in_at).toISOString().slice(0, 10);
+    const day = getIstDateString(new Date(token.created_at));
 
     if (!byDay.has(day)) {
       byDay.set(day, []);
@@ -524,6 +605,8 @@ const toPublicToken = (token) => ({
 
 module.exports = {
   getClinicBySlug,
+  nextTokenNumber,
+  supportsTokenDay,
   getTodayTokens,
   getQueueState,
   invalidateQueue,

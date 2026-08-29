@@ -672,3 +672,31 @@ test('the desk is told where its wait estimate came from', async () => {
   assert.equal(typeof data.minutes_per_patient, 'number');
   assert.equal(typeof data.pace_measured, 'boolean');
 });
+
+test('a token number collision is retried, not shown to the desk', async () => {
+  // The database refuses a number already issued today. Two entries landing in
+  // the same instant is the only way past the advisory lock, and the second
+  // just needs the next number - the front desk should never see it happen.
+  supabase.setCollideOnceOnCreate(true);
+
+  const created = await api('/api/clinics/test-clinic/tokens', {
+    method: 'POST',
+    body: JSON.stringify({ patient_name: 'Simultaneous', patient_phone: '9800000001' }),
+  });
+
+  assert.equal(created.status, 201, 'the collision reached the desk');
+  assert.ok(created.body.data.token_number > 0);
+
+  await settle();
+});
+
+test('no two patients today hold the same number', async () => {
+  const queue = await api('/api/clinics/test-clinic/queue/today');
+  const numbers = queue.body.data.tokens.map((token) => token.token_number);
+
+  assert.equal(
+    numbers.length,
+    new Set(numbers).size,
+    `duplicate token numbers issued: ${numbers.join(', ')}`
+  );
+});
