@@ -16,7 +16,7 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false        # optional: Vercel preview URLs, comma separated
       - key: CLINIC_SLUG
-        sync: false
+        value: dev-eye-care
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -27,6 +27,14 @@ services:
         sync: false
       - key: SESSION_TTL_HOURS
         value: "12"
+      - key: STAFF_RECOVERY_CODE_HASH
+        sync: false        # optional: `npm run generate-recovery`
+      - key: REMINDER_LEAD_PATIENTS
+        value: "3"
+      - key: AVG_CONSULT_MINUTES
+        value: "15"
+      - key: USE_MEASURED_PACE
+        value: "false"
       - key: NOTIFIER
         value: whatsapp
       - key: WHATSAPP_PHONE_NUMBER_ID
@@ -37,9 +45,13 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # Set to whatever Meta actually approved - the names differ per account,
+      # and a hardcoded value here would overwrite a working one on redeploy.
       - key: WHATSAPP_TEMPLATE_TOKEN_ISSUED
-        value: queue_token_issued
+        sync: false
       - key: WHATSAPP_TEMPLATE_YOUR_TURN
-        value: queue_your_turn
+        sync: false
+      - key: WHATSAPP_TEMPLATE_HEADS_UP
+        sync: false        # leave unset until the heads-up template is approved
       - key: WHATSAPP_COUNTRY_CODE
         value: "91"
