@@ -842,18 +842,10 @@ input[aria-invalid='true'] {
   overflow-wrap: anywhere;
 }
 
-.row-position,
-.row-notified {
-  font-size: 0.8rem;
-  font-weight: 750;
-}
-
 .row-position {
   color: var(--muted);
-}
-
-.row-notified {
-  color: var(--brand-deep);
+  font-size: 0.8rem;
+  font-weight: 750;
 }
 
 .row-actions {
@@ -861,19 +853,6 @@ input[aria-invalid='true'] {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--gap-sm);
   flex: 1 1 200px;
-}
-
-/* Quiet: the row is tappable to re-send a tracking link, and this says so
-   without competing with the queue controls above. */
-.row-send-hint {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 750;
-}
-
-.queue-row:hover .row-send-hint {
-  color: var(--brand);
 }
 
 /* A report row's header crams three things onto one line; give it two when the

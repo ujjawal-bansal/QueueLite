@@ -812,6 +812,10 @@ function StaffDashboard() {
                 {/* Tapping the patient re-opens the handoff panel. "Link
                     nahi aaya" is a routine call-back, and without this the
                     desk has no way to send it a second time. */}
+                {/* No action buttons here on purpose: patients are called in
+                    order from the panel above. The row itself re-opens the
+                    handoff panel, which is how a link gets sent again when a
+                    patient says it never arrived. */}
                 <button
                   type="button"
                   className="token-details token-details-button"
@@ -825,18 +829,7 @@ function StaffDashboard() {
                   {!search.trim() && index > 0 ? (
                     <small className="row-position">{index} ahead</small>
                   ) : null}
-                  {token.heads_up_sent_at || token.turn_notified_at ? (
-                    <small className="row-notified" title="Reminder sent on WhatsApp">
-                      Reminded
-                    </small>
-                  ) : null}
                 </button>
-                {/* No action here on purpose: the desk calls patients in
-                    order from the panel above. Tapping the row re-sends this
-                    patient their tracking link. */}
-                <span className="row-send-hint" aria-hidden="true">
-                  Send link
-                </span>
               </li>
             ))}
           </ul>
