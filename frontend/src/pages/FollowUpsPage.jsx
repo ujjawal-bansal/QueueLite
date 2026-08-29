@@ -8,15 +8,7 @@ import {
 } from '../api/queue'
 import { buildFollowUpMessage, smsHref, whatsappHref } from '../lib/handoff'
 import Skeleton from '../components/Skeleton'
-
-function formatDate(dueOn) {
-  return new Intl.DateTimeFormat('en-IN', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'Asia/Kolkata',
-  }).format(new Date(`${dueOn}T06:00:00Z`))
-}
+import { formatDayDate } from '../lib/datetime'
 
 function describeDue(daysUntil) {
   if (daysUntil < 0) {
@@ -195,7 +187,7 @@ function FollowUpsPage() {
                     </a>
                   </div>
                   <span className="follow-up-due">
-                    {formatDate(followUp.due_on)}
+                    {formatDayDate(followUp.due_on)}
                     <small>{describeDue(followUp.days_until)}</small>
                   </span>
                 </div>

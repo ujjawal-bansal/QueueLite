@@ -6,6 +6,11 @@
  * always agrees with the queue it was opened from.
  */
 
+import { formatClock } from './datetime.js'
+
+// Re-exported so callers can take everything the report needs from one place.
+export { formatClock }
+
 const STATUS_LABELS = {
   waiting: 'Waiting',
   in_progress: 'Being seen',
@@ -15,20 +20,6 @@ const STATUS_LABELS = {
 
 export function statusLabel(status) {
   return STATUS_LABELS[status] || status
-}
-
-export function formatClock(instant) {
-  if (!instant) {
-    return ''
-  }
-
-  return new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(instant))
-    .toLowerCase()
 }
 
 /**

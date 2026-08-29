@@ -12,6 +12,8 @@
  * recipient list and no cost.
  */
 
+import { formatDayDate } from './datetime.js'
+
 const COUNTRY_CODE = '91'
 
 // wa.me wants digits only - no +, no spaces.
@@ -119,12 +121,7 @@ export function buildFollowUpMessage({
   phone,
 }) {
   const heading = doctorName ? `${clinicName} - ${doctorName}` : clinicName
-  const when = new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'Asia/Kolkata',
-  }).format(new Date(`${dueOn}T06:00:00Z`))
+  const when = formatDayDate(dueOn, { weekday: 'long', month: 'long' })
 
   const lines = [
     `Greetings from ${heading}.`,

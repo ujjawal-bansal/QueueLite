@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getQueueToday } from '../api/queue'
 import Skeleton from '../components/Skeleton'
+import { formatToday } from '../lib/datetime'
 import {
   consultMinutes,
   csvFilename,
@@ -30,16 +31,6 @@ function matchesFilter(token, filter) {
   }
 
   return token.status === filter
-}
-
-function todayLabel() {
-  return new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Asia/Kolkata',
-  }).format(new Date())
 }
 
 /**
@@ -123,7 +114,7 @@ function ReportPage() {
       <header className="clinic-header">
         <div>
           <h1>Today&apos;s Report</h1>
-          <p>{todayLabel()}</p>
+          <p>{formatToday()}</p>
         </div>
         <div className="header-side">
           <div className="header-actions">

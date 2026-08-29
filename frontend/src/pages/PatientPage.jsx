@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getTokenStatus } from '../api/queue'
 import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
+import { formatClock } from '../lib/datetime'
 
 // Once a visit ends nothing about it can change, so polling on is pure waste -
 // a phone left open on this page would hammer the API all day.
@@ -37,20 +38,6 @@ const STATUS_LABELS = {
   in_progress: 'Your turn',
   done: 'Completed',
   no_show: 'Marked no show',
-}
-
-function formatClock(instant) {
-  if (!instant) {
-    return ''
-  }
-
-  return new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(instant))
-    .toLowerCase()
 }
 
 // The patient's own name, trimmed to the first word. "Dear Ujjawal" reads like

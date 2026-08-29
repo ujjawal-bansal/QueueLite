@@ -14,6 +14,7 @@ import {
 } from '../api/queue'
 import TokenHandoff from '../components/TokenHandoff'
 import Skeleton from '../components/Skeleton'
+import { formatClock, formatToday } from '../lib/datetime'
 import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 import PushBackPicker from '../components/PushBackPicker'
 import FollowUpPrompt from '../components/FollowUpPrompt'
@@ -55,29 +56,6 @@ function getClinicDetails(queue, slug) {
     phone: clinic.phone || '',
     mapsUrl: clinic.maps_url || '',
   }
-}
-
-function getTodayLabel() {
-  return new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date())
-}
-
-function formatClock(instant) {
-  if (!instant) {
-    return ''
-  }
-
-  return new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(instant))
-    .toLowerCase()
 }
 
 function validateForm(form) {
@@ -608,7 +586,7 @@ function StaffDashboard() {
           </div>
         </div>
         <div className="header-side">
-          <p className="today-label">{getTodayLabel()}</p>
+          <p className="today-label">{formatToday()}</p>
           <div className="header-actions">
             <Link className="signout-button" to={`/staff/${slug}/follow-ups`}>
               Follow-ups

@@ -1884,3 +1884,17 @@ input[aria-invalid='true'] {
 .skeleton-row:nth-child(3) .skeleton { animation-delay: 180ms; }
 .skeleton-row:nth-child(4) .skeleton { animation-delay: 270ms; }
 .skeleton-row:nth-child(5) .skeleton { animation-delay: 360ms; }
+
+/* The error boundary's detail line: present for whoever has to report it,
+   quiet enough not to alarm whoever is reading it at a busy desk. */
+.error-detail {
+  margin: var(--gap) 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

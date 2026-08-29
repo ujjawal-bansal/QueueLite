@@ -2,25 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getBoard } from '../api/queue'
 import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
+import { formatClock } from '../lib/datetime'
 
 // One screen in the waiting room, plus however many patients look it up on
 // their own phones. Ten seconds keeps the number honest without the board
 // being a meaningful share of the API's traffic.
 const POLL_INTERVAL_MS = 10000
-
-function formatClock(instant) {
-  if (!instant) {
-    return ''
-  }
-
-  return new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(instant))
-    .toLowerCase()
-}
 
 const STATUS_TEXT = {
   waiting: 'Waiting',
