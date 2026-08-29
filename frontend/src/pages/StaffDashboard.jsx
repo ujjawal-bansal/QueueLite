@@ -13,6 +13,8 @@ import {
   restoreToken,
 } from '../api/queue'
 import TokenHandoff from '../components/TokenHandoff'
+import Skeleton from '../components/Skeleton'
+import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 import PushBackPicker from '../components/PushBackPicker'
 import FollowUpPrompt from '../components/FollowUpPrompt'
 import {
@@ -598,9 +600,12 @@ function StaffDashboard() {
   return (
     <main className="staff-dashboard">
       <header className="clinic-header">
-        <div>
-          <h1>{clinic.name}</h1>
-          {clinic.doctor ? <p>{clinic.doctor}</p> : null}
+        <div className="clinic-identity">
+          <ClinicMark />
+          <div>
+            <h1><ClinicWordmark name={clinic.name} /></h1>
+            {clinic.doctor ? <p>{clinic.doctor}</p> : null}
+          </div>
         </div>
         <div className="header-side">
           <p className="today-label">{getTodayLabel()}</p>
@@ -648,7 +653,9 @@ function StaffDashboard() {
         <div className="serving-details">
           <p>Now Serving</p>
           {queue?.current_token_number ? (
-            <strong>#{queue.current_token_number}</strong>
+            <strong key={queue.current_token_number} className="serving-now">
+              #{queue.current_token_number}
+            </strong>
           ) : (
             <strong className="not-started">Queue not started</strong>
           )}
@@ -812,7 +819,7 @@ function StaffDashboard() {
 
         {actionError ? <p className="error-banner">{actionError}</p> : null}
 
-        {isLoading ? <p className="empty-state">Loading queue...</p> : null}
+        {isLoading ? <Skeleton rows={4} /> : null}
 
         {!isLoading && matchingTokens.length === 0 ? (
           <p className="empty-state">

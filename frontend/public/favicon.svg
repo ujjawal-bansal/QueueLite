@@ -1,9 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Dev Eye Care">
-  <!-- An eye, for an eye clinic. Solid ground and one high-contrast shape so it
-       still reads at 16px in a browser tab. -->
-  <rect width="64" height="64" rx="14" fill="#087d4b"/>
-  <path d="M8 32c7-11 15-16.5 24-16.5S49 21 56 32c-7 11-15 16.5-24 16.5S15 43 8 32Z"
-        fill="#ffffff"/>
-  <circle cx="32" cy="32" r="9.5" fill="#05603a"/>
-  <circle cx="28.5" cy="28.5" r="3" fill="#ffffff"/>
+  <!-- The clinic's mark on a navy ground. The logo's own grey would disappear
+       against browser chrome at 16px, so the chevrons are lifted to a pale tint
+       while the lens keeps its exact colour. -->
+  <rect width="64" height="64" rx="14" fill="#16395c"/>
+  <g transform="translate(10 12) scale(0.44)">
+    <path d="M68.5 2 15 45.3 68.5 85.5" fill="none" stroke="#dbe6f0" stroke-width="7" stroke-linecap="square"/>
+    <path d="M71 11 26 45.3 72 76.5" fill="none" stroke="#dbe6f0" stroke-width="7" stroke-linecap="square"/>
+    <path d="M68 13.5C79 24 85.5 34 85.5 45.5S79 67 70 76.5C66 66 65 56 65.5 45.5S66.5 23 68 13.5Z" fill="#6d9cc5"/>
+  </g>
 </svg>

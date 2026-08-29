@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSession, login, recoverAccess } from '../api/queue'
+import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 
 /**
  * Gates the staff dashboard. The session itself lives in an httpOnly cookie the
@@ -138,7 +139,8 @@ function RequireStaff({ children }) {
   return (
     <main className="login-page">
       <div className="login-card">
-        <h1>Dev Eye Care</h1>
+        <ClinicMark size={52} className="login-mark" />
+        <h1><ClinicWordmark name="Dev Eye Care" /></h1>
         <p>Enter the clinic passcode to open the front desk.</p>
 
         <form onSubmit={handleSubmit} noValidate>

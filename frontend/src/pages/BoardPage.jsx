@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getBoard } from '../api/queue'
+import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 
 // One screen in the waiting room, plus however many patients look it up on
 // their own phones. Ten seconds keeps the number honest without the board
@@ -101,7 +102,8 @@ function BoardPage() {
   return (
     <main className="board-page">
       <header className="board-header">
-        <h1>{clinic?.name || 'Queue'}</h1>
+        <ClinicMark size={48} className="board-mark" />
+        <h1><ClinicWordmark name={clinic?.name || 'Queue'} /></h1>
         {clinic?.doctor_name ? <p>{clinic.doctor_name}</p> : null}
       </header>
 
@@ -109,7 +111,7 @@ function BoardPage() {
 
       <section className="board-now" aria-live="polite">
         <p>Now Serving</p>
-        <strong>
+        <strong key={board?.current_token_number ?? 'none'} className="board-figure">
           {board?.current_token_number ? `#${board.current_token_number}` : '--'}
         </strong>
         <span>

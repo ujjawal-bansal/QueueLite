@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getQueueToday } from '../api/queue'
+import Skeleton from '../components/Skeleton'
 import {
   consultMinutes,
   csvFilename,
@@ -134,7 +135,7 @@ function ReportPage() {
       </header>
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}
-      {isLoading ? <p className="empty-state">Loading today&apos;s patients...</p> : null}
+      {isLoading ? <Skeleton rows={5} /> : null}
 
       {!isLoading ? (
         <>

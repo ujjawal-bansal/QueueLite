@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getClinic } from '../api/queue'
+import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 
 function formatHours(opensAt, closesAt) {
   if (!opensAt || !closesAt) {
@@ -56,9 +57,12 @@ function HomePage() {
   return (
     <main className="home-page">
       <header className="clinic-header">
-        <div>
-          <h1>{clinic?.name || 'QueueLite'}</h1>
-          <p>{clinic?.doctor_name || 'Walk-in token queue'}</p>
+        <div className="clinic-identity">
+          <ClinicMark />
+          <div>
+            <h1><ClinicWordmark name={clinic?.name || 'QueueLite'} /></h1>
+            <p>{clinic?.doctor_name || 'Walk-in token queue'}</p>
+          </div>
         </div>
       </header>
 

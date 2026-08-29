@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getTokenStatus } from '../api/queue'
+import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
 
 // Once a visit ends nothing about it can change, so polling on is pure waste -
 // a phone left open on this page would hammer the API all day.
@@ -240,9 +241,12 @@ function PatientPage() {
   return (
     <main className={`patient-page status-${token.status}`}>
       <header className="clinic-header">
-        <div>
-          <h1>{clinic?.name || 'Clinic'}</h1>
-          {clinic?.doctor_name ? <p>{clinic.doctor_name}</p> : null}
+        <div className="clinic-identity">
+          <ClinicMark />
+          <div>
+            <h1><ClinicWordmark name={clinic?.name || 'Clinic'} /></h1>
+            {clinic?.doctor_name ? <p>{clinic.doctor_name}</p> : null}
+          </div>
         </div>
       </header>
 

@@ -7,6 +7,7 @@ import {
   getFollowUps,
 } from '../api/queue'
 import { buildFollowUpMessage, smsHref, whatsappHref } from '../lib/handoff'
+import Skeleton from '../components/Skeleton'
 
 function formatDate(dueOn) {
   return new Intl.DateTimeFormat('en-IN', {
@@ -155,7 +156,7 @@ function FollowUpsPage() {
       </header>
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}
-      {isLoading ? <p className="empty-state">Loading follow-ups...</p> : null}
+      {isLoading ? <Skeleton rows={3} /> : null}
 
       {/* Nothing is sent automatically. This is the clinic's own list to work
           through, and the buttons on each patient open the desk's WhatsApp or
