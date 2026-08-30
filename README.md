@@ -19,8 +19,7 @@ backend/    Express 5 + Node 20        ->  Render
 
 ## Contents
 
-- [Pages](#pages)
-- [Running it locally](#running-it-locally)
+- [Live](#live)
 - [Architecture](#architecture)
 - [Data model](#data-model)
 - [API](#api)
@@ -34,62 +33,29 @@ backend/    Express 5 + Node 20        ->  Render
 
 ---
 
-## Pages
+## Live
 
-| Page | Path | Who can reach it |
+**<https://queuelite.vercel.app>**
+
+| Page | Link | Who can reach it |
 |---|---|---|
-| Staff desk | `/staff/dev-eye-care` | clinic passcode |
-| End-of-day report | `/staff/dev-eye-care/today` | clinic passcode |
-| Follow-ups | `/staff/dev-eye-care/follow-ups` | clinic passcode |
+| Waiting-room board | [queuelite.vercel.app/board/dev-eye-care](https://queuelite.vercel.app/board/dev-eye-care) | public |
+| Staff desk | [queuelite.vercel.app/staff/dev-eye-care](https://queuelite.vercel.app/staff/dev-eye-care) | clinic passcode |
+| End-of-day report | [/staff/dev-eye-care/today](https://queuelite.vercel.app/staff/dev-eye-care/today) | clinic passcode |
+| Follow-ups | [/staff/dev-eye-care/follow-ups](https://queuelite.vercel.app/staff/dev-eye-care/follow-ups) | clinic passcode |
 | Patient tracker | `/q/dev-eye-care/:tokenId` | anyone holding the link |
-| Waiting-room board | `/board/dev-eye-care` | public |
-| Home | `/` | public |
+
+API health: <https://queuelite-api.onrender.com/api/health>
+
+The board is the one worth opening first: it needs no sign-in and shows the
+queue as the waiting room sees it. The free tier sleeps, so the first request
+after a quiet spell takes half a minute while Render wakes; the app shows
+loading placeholders rather than appearing stuck.
 
 The queue day is an **Asia/Kolkata calendar day**: numbering restarts at IST
 midnight wherever the server runs. One deployment serves one clinic;
 `CLINIC_SLUG` names it and any other slug is refused, so a guessed URL cannot
 reach another clinic's queue.
-
----
-
-## Running it locally
-
-```bash
-# 1. Database, once against your Supabase project
-#    Fresh project:
-psql "$SUPABASE_DB_URL" -f backend/sql/schema.sql
-#    Existing project, in order:
-for f in backend/sql/migrations/*.sql; do psql "$SUPABASE_DB_URL" -f "$f"; done
-
-# 2. Backend
-cd backend
-cp .env.example .env
-npm install
-npm run generate-secrets     # SESSION_SECRET + WHATSAPP_VERIFY_TOKEN
-npm run hash-passcode        # STAFF_PASSCODE_HASH
-npm run generate-recovery    # optional break-glass code
-npm run dev                  # http://localhost:3001
-
-# 3. Frontend
-cd ../frontend
-cp .env.example .env
-npm install
-npm run dev                  # http://localhost:5173
-```
-
-No `psql`? Paste each migration into the Supabase SQL editor instead. Every one
-ends with a `select` that reports what it created.
-
-Two things that have caught us before:
-
-- **A `.env` change needs a manual restart.** `node --watch` only watches files
-  it `require`s, and `.env` is read by dotenv rather than required.
-- **A schema change needs `notify pgrst, 'reload schema'`.** PostgREST answers
-  from a cached copy of the schema, so a new column can exist in the database
-  while the API insists it does not. Every migration ends with it.
-
-`NOTIFIER=console` (the default) logs messages instead of sending them, so the
-whole app works before WhatsApp is configured.
 
 ---
 
@@ -374,6 +340,31 @@ both sign-in and patient links.
 
 Run migrations **before** merging, or rely on the fallbacks. The API tolerates a
 missing `token_day`, but not every future change will be so forgiving.
+
+### Working on it locally
+
+```bash
+cd backend  && cp .env.example .env && npm install && npm run dev   # :3001
+cd frontend && cp .env.example .env && npm install && npm run dev   # :5173
+```
+
+`npm run generate-secrets`, `npm run hash-passcode` and, optionally,
+`npm run generate-recovery` fill in the blanks in `backend/.env`.
+`NOTIFIER=console` is the default and logs messages instead of sending them, so
+the whole app works before WhatsApp is configured.
+
+Apply `backend/sql/schema.sql` to a fresh database, or the files in
+`backend/sql/migrations/` in order to an existing one. Each ends with a
+`select` reporting what it created; paste them into the Supabase SQL editor if
+you have no `psql`.
+
+Two things that have caught us before:
+
+- **A `.env` change needs a manual restart.** `node --watch` only watches files
+  it `require`s, and `.env` is read by dotenv rather than required.
+- **A schema change needs `notify pgrst, 'reload schema'`.** PostgREST answers
+  from a cached copy of the schema, so a new column can exist in the database
+  while the API insists it does not. Every migration ends with it.
 
 ---
 
