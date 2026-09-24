@@ -60,6 +60,16 @@ const env = {
   // present-but-unusable, so there is no second door unless one is asked for.
   staffRecoveryCodeHash: optional('STAFF_RECOVERY_CODE_HASH', ''),
 
+  // Sign in with Google, for the people listed and nobody else. The staff
+  // pages show every patient's name and number, so there is no self sign-up:
+  // adding someone means adding their email here. Both unset means the button
+  // does not appear; the passcode works either way.
+  googleClientId: optional('GOOGLE_CLIENT_ID', ''),
+  staffGoogleEmails: optional('STAFF_GOOGLE_EMAILS', '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+
   notifier,
 
   // How many patients ahead trigger the "you're close, start heading over"
@@ -122,6 +132,30 @@ if (env.staffRecoveryCodeHash) {
         'not the recovery code itself'
     );
   }
+}
+
+// Half a configuration is a sign-in button that can never succeed, or a list
+// of emails with no way to use it. Say which half is missing at startup.
+if (env.googleClientId && env.staffGoogleEmails.length === 0) {
+  problems.push(
+    '  STAFF_GOOGLE_EMAILS is empty - list the staff Google accounts allowed in, ' +
+      'comma separated, or unset GOOGLE_CLIENT_ID'
+  );
+}
+
+if (!env.googleClientId && env.staffGoogleEmails.length > 0) {
+  problems.push(
+    '  GOOGLE_CLIENT_ID is required when STAFF_GOOGLE_EMAILS is set - ' +
+      'create an OAuth client ID of type "Web application" in Google Cloud'
+  );
+}
+
+const malformedEmails = env.staffGoogleEmails.filter(
+  (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+);
+
+if (malformedEmails.length > 0) {
+  problems.push(`  STAFF_GOOGLE_EMAILS has entries that are not emails: ${malformedEmails.join(', ')}`);
 }
 
 if (!Number.isInteger(env.reminderLeadPatients) || env.reminderLeadPatients < 0) {

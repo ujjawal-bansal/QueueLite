@@ -1877,3 +1877,38 @@ input[aria-invalid='true'] {
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+
+/* -------------------------------------------------------------------------
+   Sign in with Google
+   ------------------------------------------------------------------------- */
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  margin: var(--gap) 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+/* Google draws the button; this only reserves its height so the card does not
+   jump when it arrives, and centres it. */
+.google-signin {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+.google-signin.is-busy {
+  opacity: 0.6;
+  pointer-events: none;
+}

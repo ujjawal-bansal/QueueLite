@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getSession, login, recoverAccess } from '../api/queue'
+import {
+  getAuthMethods,
+  getSession,
+  login,
+  recoverAccess,
+  signInWithGoogle,
+} from '../api/queue'
 import ClinicMark, { ClinicWordmark } from '../components/ClinicMark'
+import GoogleSignInButton from './GoogleSignInButton'
 
 /**
  * Gates the staff dashboard. The session itself lives in an httpOnly cookie the
@@ -18,6 +25,9 @@ function RequireStaff({ children }) {
   const [recoveryError, setRecoveryError] = useState('')
   const [recoveryUnavailable, setRecoveryUnavailable] = useState(false)
   const [isRecovering, setIsRecovering] = useState(false)
+  const [googleClientId, setGoogleClientId] = useState(null)
+  const [googleError, setGoogleError] = useState('')
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false)
 
   const check = useCallback(async () => {
     try {
@@ -43,6 +53,44 @@ function RequireStaff({ children }) {
       window.clearTimeout(checkId)
     }
   }, [check])
+
+  // Only asked once there is a login screen to draw. If it fails the button
+  // simply does not appear; the passcode is still there.
+  useEffect(() => {
+    if (state !== 'signed-out' || googleClientId) {
+      return
+    }
+
+    getAuthMethods()
+      .then((methods) => {
+        if (mountedRef.current && methods?.google_client_id) {
+          setGoogleClientId(methods.google_client_id)
+        }
+      })
+      .catch(() => {})
+  }, [state, googleClientId])
+
+  const handleGoogleCredential = useCallback(async (credential) => {
+    setIsGoogleSigningIn(true)
+    setGoogleError('')
+
+    try {
+      const data = await signInWithGoogle(credential)
+
+      if (mountedRef.current) {
+        setSession(data)
+        setState('signed-in')
+      }
+    } catch (googleSignInError) {
+      if (mountedRef.current) {
+        setGoogleError(googleSignInError.message)
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsGoogleSigningIn(false)
+      }
+    }
+  }, [])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -141,7 +189,11 @@ function RequireStaff({ children }) {
       <div className="login-card">
         <ClinicMark size={52} className="login-mark" />
         <h1><ClinicWordmark name="Dev Eye Care" /></h1>
-        <p>Enter the clinic passcode to open the front desk.</p>
+        <p>
+          {googleClientId
+            ? 'Enter the clinic passcode, or sign in with Google, to open the front desk.'
+            : 'Enter the clinic passcode to open the front desk.'}
+        </p>
 
         <form onSubmit={handleSubmit} noValidate>
           <label>
@@ -165,6 +217,23 @@ function RequireStaff({ children }) {
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        {/* For staff whose Google account the clinic has listed. Anyone else
+            is turned away by the server, whatever this page does. */}
+        {googleClientId ? (
+          <>
+            <p className="login-divider">or</p>
+            <GoogleSignInButton
+              clientId={googleClientId}
+              onCredential={handleGoogleCredential}
+              disabled={isGoogleSigningIn}
+            />
+            {isGoogleSigningIn ? (
+              <p className="empty-state" aria-live="polite">Signing in with Google...</p>
+            ) : null}
+            {googleError ? <p className="form-error">{googleError}</p> : null}
+          </>
+        ) : null}
 
         {/* Forgetting the passcode used to be a dead end mid-clinic. */}
         {!showRecovery ? (

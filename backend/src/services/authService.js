@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const env = require('../config/env');
 
 const KEY_LENGTH = 64;
@@ -55,13 +56,62 @@ const verifyRecoveryCode = (code) => {
   return verifyAgainstHash(code, env.staffRecoveryCodeHash, 'STAFF_RECOVERY_CODE_HASH');
 };
 
+const isGoogleEnabled = () =>
+  Boolean(env.googleClientId) && env.staffGoogleEmails.length > 0;
+
+// Fetches and caches Google's signing keys itself; nothing to configure.
+const googleClient = new OAuth2Client();
+
+/**
+ * Checks a Google sign-in and whether that account may open the desk.
+ *
+ * The signature, issuer, expiry and audience are all checked by Google's own
+ * library - the audience is what stops a token minted for some other site
+ * being replayed here. Then the email has to be one Google has verified and
+ * one the clinic listed. Anything else is refused: this is the door to every
+ * patient's name and phone number.
+ */
+const verifyGoogleCredential = async (credential) => {
+  if (!isGoogleEnabled() || typeof credential !== 'string' || !credential) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  let payload;
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: env.googleClientId,
+    });
+
+    payload = ticket.getPayload();
+  } catch (error) {
+    return { ok: false, reason: 'invalid', detail: error.message };
+  }
+
+  const email = String(payload?.email || '').toLowerCase();
+
+  if (!email || payload.email_verified !== true) {
+    return { ok: false, reason: 'unverified', email };
+  }
+
+  if (!env.staffGoogleEmails.includes(email)) {
+    return { ok: false, reason: 'not_listed', email };
+  }
+
+  return { ok: true, email };
+};
+
 // `via` records how this session was obtained, so the dashboard can tell staff
 // they are signed in on the break-glass code and the passcode still needs
 // resetting - otherwise a clinic quietly runs on the recovery code for months.
-const issueSession = (via = 'passcode') =>
-  jwt.sign({ role: 'staff', clinic: env.clinicSlug, via }, env.sessionSecret, {
-    expiresIn: `${env.sessionTtlHours}h`,
-  });
+// A Google session also carries who it is, which a shared passcode cannot.
+const issueSession = (via = 'passcode', { email } = {}) =>
+  jwt.sign(
+    { role: 'staff', clinic: env.clinicSlug, via, ...(email ? { email } : {}) },
+    env.sessionSecret,
+    { expiresIn: `${env.sessionTtlHours}h` }
+  );
 
 const readSession = (token) => {
   if (!token) {
@@ -87,6 +137,9 @@ module.exports = {
   verifyPasscode,
   verifyRecoveryCode,
   isRecoveryEnabled,
+  isGoogleEnabled,
+  verifyGoogleCredential,
+  googleClient,
   issueSession,
   readSession,
   cookieOptions,

@@ -9,6 +9,7 @@ const redact = {
     'req.body.patient_name',
     'req.body.patient_phone',
     'req.body.passcode',
+    'req.body.credential',
     'patient_name',
     'patient_phone',
     '*.patient_name',

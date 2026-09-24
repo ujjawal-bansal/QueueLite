@@ -29,6 +29,10 @@ services:
         value: "12"
       - key: STAFF_RECOVERY_CODE_HASH
         sync: false        # optional: `npm run generate-recovery`
+      - key: GOOGLE_CLIENT_ID
+        sync: false        # optional: Google sign-in for listed staff
+      - key: STAFF_GOOGLE_EMAILS
+        sync: false        # comma separated; required with GOOGLE_CLIENT_ID
       - key: REMINDER_LEAD_PATIENTS
         value: "3"
       - key: AVG_CONSULT_MINUTES

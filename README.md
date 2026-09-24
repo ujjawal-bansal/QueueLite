@@ -214,7 +214,8 @@ All responses are `{ success, data }` or `{ success, error }`.
 | `GET` | `/api/clinic` | public |
 | `GET` | `/api/clinics/:slug/board` | public |
 | `GET` | `/api/clinics/:slug/tokens/:tokenId` | public (tracking link) |
-| `POST` | `/api/auth/login` \| `/recover` \| `/logout` | public |
+| `POST` | `/api/auth/login` \| `/recover` \| `/google` \| `/logout` | public |
+| `GET` | `/api/auth/methods` | public |
 | `GET` | `/api/auth/session` | staff |
 | `GET` | `/api/clinics/:slug/queue/today` | **staff** |
 | `POST` | `/api/clinics/:slug/tokens` | **staff** |
@@ -240,6 +241,30 @@ absent entirely (404, not 403) when no code is configured. A session opened
 that way shows an amber banner on every page until the passcode is reset, so a
 clinic does not quietly run on it for months.
 
+### Sign in with Google
+
+Optional, and only for accounts the clinic lists in `STAFF_GOOGLE_EMAILS`.
+There is no self sign-up: the staff pages show every patient's name and phone
+number, so an account is added by adding its email and redeploying. Google's ID
+token is verified on the server (signature, expiry, issuer, and that it was
+issued for this app's client ID), the email must be one Google has verified,
+and the session issued is the ordinary staff cookie, marked `via: google` with
+the email, so the logs finally say who signed in. The passcode keeps working
+alongside it.
+
+To switch it on:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   create an **OAuth client ID** of type **Web application**. Under
+   **Authorized JavaScript origins** add `https://queuelite.vercel.app` (and
+   `http://localhost:5173` plus `http://localhost` for local work). No redirect
+   URI is needed.
+2. On the OAuth consent screen, choose **External** and add the staff emails
+   as test users, or publish the app. Only the `email` and `profile` basics
+   are requested, so no Google verification review is needed.
+3. Set `GOOGLE_CLIENT_ID` and `STAFF_GOOGLE_EMAILS` on Render and redeploy.
+   The frontend asks the API for the client ID, so nothing changes on Vercel.
+
 The patient tracking route is deliberately public: the unguessable token UUID
 is the capability, and that endpoint never returns a phone number.
 
@@ -260,6 +285,8 @@ list.
 | `SESSION_TTL_HOURS` | `12` | how long a staff sign-in lasts |
 | `NOTIFIER` | `console` | `console` logs messages, `whatsapp` sends them |
 | `STAFF_RECOVERY_CODE_HASH` | unset | unset means no break-glass sign-in exists |
+| `GOOGLE_CLIENT_ID` | unset | turns on Sign in with Google |
+| `STAFF_GOOGLE_EMAILS` | unset | the Google accounts allowed in, comma separated |
 
 The server refuses to start on a malformed value and names it, rather than
 failing later at the moment somebody needs it.
@@ -373,6 +400,11 @@ Two things that have caught us before:
 **Clinic details** live in the `clinics` row, not in code. Editing it updates
 the patient page, the board, the messages staff send and the bot's replies.
 
+**Adding or removing a Google account:** edit `STAFF_GOOGLE_EMAILS` on Render
+and redeploy. Removing an email stops new sign-ins at once, but a session
+already open lasts until it expires (`SESSION_TTL_HOURS`); rotate
+`SESSION_SECRET` as well to end it immediately.
+
 **Rotating the staff passcode:** `npm run hash-passcode`, update
 `STAFF_PASSCODE_HASH` on Render, redeploy. Rotating `SESSION_SECRET` too signs
 everyone out immediately.
@@ -395,7 +427,7 @@ tap-to-send buttons.
 ## Testing
 
 ```bash
-cd backend  && npm test     # 127 tests, no database needed
+cd backend  && npm test     # 137 tests, no database needed
 cd frontend && npm test     # 31 tests
 cd frontend && npm run lint && npm run build
 ```
