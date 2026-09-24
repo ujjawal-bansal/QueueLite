@@ -11,6 +11,41 @@ const IST = 'Asia/Kolkata'
 
 const isValid = (date) => date instanceof Date && !Number.isNaN(date.getTime())
 
+// Building a formatter costs far more than using one, and the report formats
+// three times per patient. Each is built once and reused.
+//
+// The clinic's timezone is pinned, not left to the browser: a phone set to
+// another zone must still read "3:40 pm" for a 3:40 pm appointment.
+const clockFormat = new Intl.DateTimeFormat('en-IN', {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+  timeZone: IST,
+})
+
+const todayFormat = new Intl.DateTimeFormat('en-IN', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: IST,
+})
+
+const dayFormats = new Map()
+
+const dayFormat = (weekday, month) => {
+  const key = `${weekday}|${month}`
+
+  if (!dayFormats.has(key)) {
+    dayFormats.set(
+      key,
+      new Intl.DateTimeFormat('en-IN', { weekday, day: 'numeric', month, timeZone: IST }),
+    )
+  }
+
+  return dayFormats.get(key)
+}
+
 /** A wall-clock time at the clinic: "3:40 pm". Empty string for anything unusable. */
 export function formatClock(instant) {
   if (!instant) {
@@ -23,13 +58,7 @@ export function formatClock(instant) {
     return ''
   }
 
-  return new Intl.DateTimeFormat('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(date)
-    .toLowerCase()
+  return clockFormat.format(date).toLowerCase()
 }
 
 /**
@@ -49,21 +78,10 @@ export function formatDayDate(day, { weekday = 'short', month = 'short' } = {}) 
     return ''
   }
 
-  return new Intl.DateTimeFormat('en-IN', {
-    weekday,
-    day: 'numeric',
-    month,
-    timeZone: IST,
-  }).format(date)
+  return dayFormat(weekday, month).format(date)
 }
 
 /** Today at the clinic, spelled out for a page heading. */
 export function formatToday(now = new Date()) {
-  return new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: IST,
-  }).format(now)
+  return todayFormat.format(now)
 }

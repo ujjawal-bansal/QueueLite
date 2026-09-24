@@ -299,13 +299,14 @@ test('the whole waiting room polling at once does not multiply database reads', 
 
   cookie = savedCookie;
 
-  // 100 patients refreshing simultaneously. Each request still reads the clinic
-  // row, but the day's tokens - the expensive read - are fetched once.
+  // 100 patients refreshing simultaneously. The day's tokens are fetched once
+  // and the clinic row comes from its own cache, so at most one read of each -
+  // not one clinic read per phone, which is what this used to cost.
   const reads = supabase.counts.select - before;
 
   assert.ok(
-    reads <= 105,
-    `expected the token list to be read once, saw ${reads} reads for 100 requests`
+    reads <= 2,
+    `expected at most one token and one clinic read, saw ${reads} reads for 100 requests`
   );
 });
 

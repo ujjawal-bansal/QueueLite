@@ -54,13 +54,18 @@ function BoardPage() {
   // their own position sees it move without touching anything.
   useEffect(() => {
     mountedRef.current = true
+    // This run's own flag, not mountedRef: a new lookup re-runs the effect and
+    // sets mountedRef straight back, so a poll still out for the old number
+    // would carry on alongside the new one, twice the requests and flipping
+    // the screen between the two answers.
+    let active = true
 
     const tick = async () => {
       if (document.visibilityState === 'visible') {
         await load(lookupNumber)
       }
 
-      if (mountedRef.current) {
+      if (active) {
         timerRef.current = window.setTimeout(tick, POLL_INTERVAL_MS)
       }
     }
@@ -68,6 +73,7 @@ function BoardPage() {
     timerRef.current = window.setTimeout(tick, 0)
 
     return () => {
+      active = false
       mountedRef.current = false
       window.clearTimeout(timerRef.current)
     }

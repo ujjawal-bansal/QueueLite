@@ -8,19 +8,21 @@ const assert = require('node:assert');
 // without a database.
 let queryCount = 0;
 let tokens = [];
+let clinic = null;
 let resolveNext = null;
 
-const builder = () => {
+const builder = (table) => {
   const chain = {
     select: () => chain,
     eq: () => chain,
     gte: () => chain,
     lt: () => chain,
     order: () => chain,
+    maybeSingle: () => chain,
     then: (onFulfilled, onRejected) => {
       queryCount += 1;
 
-      const settle = () => ({ data: tokens, error: null });
+      const settle = () => ({ data: table === 'clinics' ? clinic : tokens, error: null });
 
       // A test can hold the query open to prove concurrent callers wait on the
       // same one rather than each starting their own.
@@ -46,6 +48,7 @@ require.cache[supabasePath] = {
 };
 
 const {
+  getClinicBySlug,
   getTodayTokens,
   invalidateQueue,
 } = require('../src/services/queueService');
@@ -135,4 +138,34 @@ test('a failed read is not cached', async () => {
   const recovered = await getTodayTokens(CLINIC_ID);
 
   assert.equal(recovered.length, 2);
+});
+
+test('every request reading the clinic row costs one database read', async () => {
+  // Each tracker poll resolves the clinic before anything else. Read per
+  // request, that was a hundred clinic reads for a hundred phones.
+  clinic = { id: CLINIC_ID, slug: 'shared-clinic', name: 'Dev Eye Care' };
+
+  const concurrent = await Promise.all(
+    Array.from({ length: 100 }, () => getClinicBySlug('shared-clinic'))
+  );
+  const later = await getClinicBySlug('shared-clinic');
+
+  assert.equal(queryCount, 1);
+  concurrent.forEach((result) => assert.equal(result.name, 'Dev Eye Care'));
+  assert.equal(later.name, 'Dev Eye Care');
+});
+
+test('a clinic that does not exist yet is not remembered as missing', async () => {
+  clinic = null;
+
+  assert.equal(await getClinicBySlug('new-clinic'), null);
+
+  // The row is inserted while the service is running. The next request must
+  // find it, not a cached answer from before it existed.
+  clinic = { id: CLINIC_ID, slug: 'new-clinic', name: 'Dev Eye Care' };
+
+  const found = await getClinicBySlug('new-clinic');
+
+  assert.equal(queryCount, 2);
+  assert.equal(found.slug, 'new-clinic');
 });

@@ -195,18 +195,51 @@ function StaffDashboard() {
 
   useEffect(() => {
     mountedRef.current = true
-    const initialLoadId = window.setTimeout(() => {
-      loadQueue()
-    }, 0)
+    let active = true
+    let timerId = null
+    let polling = false
 
-    const intervalId = window.setInterval(() => {
-      loadQueue({ silent: true })
-    }, POLL_INTERVAL_MS)
+    // Self-scheduling rather than a fixed interval. Waking the server holds a
+    // request open for up to a minute of retries, and an interval kept starting
+    // fresh polls on top of it, each with retries of its own. The next poll is
+    // timed from when the last one finished, and only one is ever running.
+    const poll = async (isFirst) => {
+      if (polling) {
+        return
+      }
+
+      polling = true
+      window.clearTimeout(timerId)
+
+      try {
+        // A desk tab in the background is not being watched; it catches up the
+        // moment it is looked at again.
+        if (isFirst || document.visibilityState === 'visible') {
+          await loadQueue({ silent: !isFirst })
+        }
+      } finally {
+        polling = false
+      }
+
+      if (active) {
+        timerId = window.setTimeout(() => poll(false), POLL_INTERVAL_MS)
+      }
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        poll(false)
+      }
+    }
+
+    timerId = window.setTimeout(() => poll(true), 0)
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
+      active = false
       mountedRef.current = false
-      window.clearTimeout(initialLoadId)
-      window.clearInterval(intervalId)
+      window.clearTimeout(timerId)
+      document.removeEventListener('visibilitychange', onVisible)
       window.clearTimeout(successTimerRef.current)
       window.clearTimeout(undoTimerRef.current)
     }

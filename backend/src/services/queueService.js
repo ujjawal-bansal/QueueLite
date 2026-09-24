@@ -17,7 +17,68 @@ const ACTIVE_STATUSES = ['waiting', 'in_progress'];
 // queue for longer than one refresh.
 const SNAPSHOT_TTL_MS = 2500;
 
-const getClinicBySlug = async (slug) => {
+// The clinic row is needed by every request, tracker polls included, and only
+// changes when somebody edits it by hand in Supabase. A minute is still short
+// enough for that edit to show up without a deploy.
+const CLINIC_TTL_MS = 60 * 1000;
+
+/**
+ * A read shared by every caller that arrives while it is loading or fresh.
+ *
+ * Holding the in-flight promise is what makes concurrent callers share a
+ * single query instead of each starting their own. A failed read is never
+ * kept, or one blip would freeze the answer for everyone until the TTL ran out.
+ */
+const sharedRead = (load, ttlMs, { keep = () => true } = {}) => {
+  const entries = new Map();
+
+  const read = (key, { fresh = false } = {}) => {
+    const cached = entries.get(key);
+
+    if (!fresh && cached) {
+      // Still warm, or still loading: either way this caller joins it.
+      if (cached.pending || Date.now() - cached.fetchedAt < ttlMs) {
+        return cached.promise;
+      }
+    }
+
+    const entry = { pending: true, fetchedAt: Date.now(), promise: null };
+
+    // Only drop our own entry. A fresh read may have replaced it meanwhile,
+    // and that one is newer than anything this read knows.
+    const forget = () => {
+      if (entries.get(key) === entry) {
+        entries.delete(key);
+      }
+    };
+
+    entry.promise = load(key)
+      .then((value) => {
+        entry.pending = false;
+        entry.fetchedAt = Date.now();
+
+        if (!keep(value)) {
+          forget();
+        }
+
+        return value;
+      })
+      .catch((error) => {
+        forget();
+        throw error;
+      });
+
+    entries.set(key, entry);
+
+    return entry.promise;
+  };
+
+  read.invalidate = (key) => entries.delete(key);
+
+  return read;
+};
+
+const fetchClinicBySlug = async (slug) => {
   const { data, error } = await supabase
     .from('clinics')
     .select('*')
@@ -30,6 +91,12 @@ const getClinicBySlug = async (slug) => {
 
   return data;
 };
+
+// A missing clinic is not remembered: it means the row is being set up, and
+// the next request should see it as soon as it exists.
+const getClinicBySlug = sharedRead(fetchClinicBySlug, CLINIC_TTL_MS, {
+  keep: (clinic) => Boolean(clinic),
+});
 
 /**
  * Whether the database has the token_day column yet.
@@ -105,47 +172,17 @@ const fetchTodayTokens = async (clinicId) => {
 /** True once the database is known to carry token_day. */
 const supportsTokenDay = () => hasTokenDay === true;
 
-// One entry per clinic; this deployment serves exactly one, so the map never
-// grows. Holding the in-flight promise is what makes concurrent callers share a
-// single query instead of each starting their own.
-const snapshots = new Map();
-
-const invalidateQueue = (clinicId) => {
-  snapshots.delete(clinicId);
-};
-
 /**
  * Today's tokens, shared across every concurrent reader for a moment. Staff
  * mutations call invalidateQueue, so the desk never reads its own stale write.
+ *
+ * One entry per clinic; this deployment serves exactly one, so the map never
+ * grows.
  */
-const getTodayTokens = async (clinicId, { fresh = false } = {}) => {
-  const cached = snapshots.get(clinicId);
+const getTodayTokens = sharedRead(fetchTodayTokens, SNAPSHOT_TTL_MS);
 
-  if (!fresh && cached) {
-    // Still warm, or still loading: either way this caller joins it.
-    if (cached.pending || Date.now() - cached.fetchedAt < SNAPSHOT_TTL_MS) {
-      return cached.promise;
-    }
-  }
-
-  const entry = { pending: true, fetchedAt: Date.now(), promise: null };
-
-  entry.promise = fetchTodayTokens(clinicId)
-    .then((tokens) => {
-      entry.pending = false;
-      entry.fetchedAt = Date.now();
-      return tokens;
-    })
-    .catch((error) => {
-      // A failed read must not be cached, or one blip freezes the queue for
-      // everyone until the TTL expires.
-      snapshots.delete(clinicId);
-      throw error;
-    });
-
-  snapshots.set(clinicId, entry);
-
-  return entry.promise;
+const invalidateQueue = (clinicId) => {
+  getTodayTokens.invalidate(clinicId);
 };
 
 /**
@@ -232,14 +269,13 @@ const positionAfter = (tokens, token, places) => {
  * something a patient finds out about later - they are holding it. The unique
  * index on (clinic, day, number) is what makes this safe under two entries
  * landing together; the caller retries on the collision.
+ *
+ * Takes the day's tokens rather than reading them, so the caller can go on to
+ * describe the queue from the same read. Pass a fresh one: that is what the
+ * queue will show, and allocating against a snapshot only invites collisions.
  */
-const nextTokenNumber = async (clinicId) => {
-  // Reads the day's tokens through the same path everything else uses, so the
-  // number is allocated against exactly the set the queue will show.
-  const tokens = await getTodayTokens(clinicId, { fresh: true });
-
-  return tokens.reduce((highest, token) => Math.max(highest, token.token_number), 0) + 1;
-};
+const nextTokenNumber = (tokens) =>
+  tokens.reduce((highest, token) => Math.max(highest, token.token_number), 0) + 1;
 
 const getNextWaitingToken = async (clinicId) => {
   const tokens = await getTodayTokens(clinicId, { fresh: true });
@@ -527,8 +563,11 @@ const getHistoricalPace = async (clinicId) => {
  * The queue as everything else needs it: the day's tokens plus the derived
  * figures, computed once instead of in each caller.
  */
-const getQueueState = async (clinic, { fresh = false } = {}) => {
-  const tokens = await getTodayTokens(clinic.id, { fresh });
+const getQueueState = async (clinic, { fresh = false } = {}) =>
+  describeQueue(clinic, await getTodayTokens(clinic.id, { fresh }));
+
+/** The same, for a caller that already holds the day's tokens. */
+const describeQueue = async (clinic, tokens) => {
   const context = getQueueContext(tokens);
 
   // Only worth reading history while measuring is on and today cannot answer
@@ -609,6 +648,7 @@ module.exports = {
   supportsTokenDay,
   getTodayTokens,
   getQueueState,
+  describeQueue,
   invalidateQueue,
   getNextWaitingToken,
   findActiveTokenByPhone,
