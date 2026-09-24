@@ -6,7 +6,9 @@ const notifier = require('../services/notifier');
 const { runRemindersInBackground } = require('../services/reminderService');
 const {
   getClinicBySlug,
+  getTodayTokens,
   getQueueState,
+  describeQueue,
   invalidateQueue,
   getNextWaitingToken,
   countPatientsAhead,
@@ -137,13 +139,15 @@ const createToken = async (req, res, next) => {
      * next one.
      */
     const issue = async () => {
-      const tokenNumber = await nextTokenNumber(clinic.id);
+      // Reads the day's tokens through the same path everything else uses, so
+      // the number is allocated against exactly the set the queue will show.
+      const tokens = await getTodayTokens(clinic.id, { fresh: true });
 
-      return supabase
+      const { data, error } = await supabase
         .from('tokens')
         .insert({
           clinic_id: clinic.id,
-          token_number: tokenNumber,
+          token_number: nextTokenNumber(tokens),
           patient_name: patientName,
           patient_phone: patientPhone,
           status: 'waiting',
@@ -153,15 +157,17 @@ const createToken = async (req, res, next) => {
         })
         .select('*')
         .maybeSingle();
+
+      return { data, error, tokens };
     };
 
-    let { data: token, error } = await issue();
+    let { data: token, error, tokens } = await issue();
 
     // 23505 is the uniqueness constraint refusing a number already issued
     // today. Three attempts covers any realistic collision at one front desk.
     for (let attempt = 0; error?.code === '23505' && attempt < 3; attempt += 1) {
       logger.warn({ attempt: attempt + 1 }, 'token number collided, taking the next');
-      ({ data: token, error } = await issue());
+      ({ data: token, error, tokens } = await issue());
     }
 
     if (error) {
@@ -175,7 +181,10 @@ const createToken = async (req, res, next) => {
     invalidateQueue(clinic.id);
     logger.info({ tokenNumber: token.token_number }, 'token issued');
 
-    const state = await getQueueState(clinic, { fresh: true });
+    // The day as it stood when this number was allocated, plus the row the
+    // insert just returned. Reading the whole day back would only repeat what
+    // this request already knows, and the desk waits on every round trip.
+    const state = await describeQueue(clinic, [...tokens, token]);
     const ahead = countPatientsAhead(state.tokens, token);
     const readyAt = estimateReadyAt(ahead, state.minutes_per_patient);
 
@@ -253,22 +262,25 @@ const getTodayQueue = async (req, res, next) => {
  * Moves a token to in_progress, closing out whoever was being seen. Shared by
  * Call In (a named patient) and Call Next (whoever is at the front).
  */
-const callInById = async (clinic, tokenId) => {
+const callInById = async (clinic, tokenId, { ownedByClinic = false } = {}) => {
   // Confirm the token belongs to this clinic before closing anyone out, so a
-  // bad id cannot end the visit of whoever is currently being seen.
-  const { data: existingToken, error: lookupError } = await supabase
-    .from('tokens')
-    .select('id')
-    .eq('id', tokenId)
-    .eq('clinic_id', clinic.id)
-    .maybeSingle();
+  // bad id cannot end the visit of whoever is currently being seen. A caller
+  // that took the id from this clinic's own queue has already established it.
+  if (!ownedByClinic) {
+    const { data: existingToken, error: lookupError } = await supabase
+      .from('tokens')
+      .select('id')
+      .eq('id', tokenId)
+      .eq('clinic_id', clinic.id)
+      .maybeSingle();
 
-  if (lookupError) {
-    return { error: { status: 400, message: lookupError.message } };
-  }
+    if (lookupError) {
+      return { error: { status: 400, message: lookupError.message } };
+    }
 
-  if (!existingToken) {
-    return { error: { status: 404, message: 'Token not found' } };
+    if (!existingToken) {
+      return { error: { status: 404, message: 'Token not found' } };
+    }
   }
 
   // One statement instead of two: the previous patient is closed out and the
@@ -349,7 +361,11 @@ const callNext = async (req, res, next) => {
       return sendError(res, 409, 'Nobody is waiting');
     }
 
-    const { token, error } = await callInById(clinic, frontOfQueue.id);
+    // Read fresh from this clinic's queue a moment ago, so checking that it
+    // belongs here would be a second round trip on the desk's busiest button.
+    const { token, error } = await callInById(clinic, frontOfQueue.id, {
+      ownedByClinic: true,
+    });
 
     if (error) {
       return sendError(res, error.status, error.message);
