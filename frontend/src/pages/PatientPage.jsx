@@ -146,17 +146,32 @@ function PatientPage() {
 
   useEffect(() => {
     mountedRef.current = true
+    let active = true
+    let polling = false
 
     // Self-scheduling rather than a fixed interval: the gap to the next poll is
     // decided by the answer the last one gave.
     const run = async (isFirst) => {
-      // A backgrounded tab does not need live updates - it refreshes on return,
-      // so a poll spent here is one nobody is looking at.
-      if (isFirst || document.visibilityState === 'visible') {
-        await loadStatus({ silent: !isFirst })
+      // One chain of polls. Returning to the tab while a slow poll is still out
+      // used to start a second chain alongside it, and the phone polled twice
+      // as often for the rest of the day.
+      if (polling) {
+        return
       }
 
-      if (!mountedRef.current || TERMINAL_STATUSES.has(statusRef.current)) {
+      polling = true
+
+      try {
+        // A backgrounded tab does not need live updates - it refreshes on
+        // return, so a poll spent here is one nobody is looking at.
+        if (isFirst || document.visibilityState === 'visible') {
+          await loadStatus({ silent: !isFirst })
+        }
+      } finally {
+        polling = false
+      }
+
+      if (!active || TERMINAL_STATUSES.has(statusRef.current)) {
         return
       }
 
@@ -182,6 +197,7 @@ function PatientPage() {
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
+      active = false
       mountedRef.current = false
       window.clearTimeout(timerRef.current)
       document.removeEventListener('visibilitychange', onVisible)
