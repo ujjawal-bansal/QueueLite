@@ -16,6 +16,8 @@ process.env.NOTIFIER = 'console';
 // route on in tests written for it being off. Assigning rather than deleting is
 // what stops dotenv refilling it, and `||` lets a test set its own first.
 process.env.STAFF_RECOVERY_CODE_HASH = process.env.STAFF_RECOVERY_CODE_HASH || '';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+process.env.STAFF_GOOGLE_EMAILS = process.env.STAFF_GOOGLE_EMAILS || '';
 process.env.USE_MEASURED_PACE = process.env.USE_MEASURED_PACE || 'false';
 process.env.AVG_CONSULT_MINUTES = process.env.AVG_CONSULT_MINUTES || '15';
 process.env.REMINDER_LEAD_PATIENTS = process.env.REMINDER_LEAD_PATIENTS || '3';

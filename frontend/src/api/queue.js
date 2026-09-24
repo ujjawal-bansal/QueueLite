@@ -120,6 +120,21 @@ export function recoverAccess(code) {
   })
 }
 
+// Which ways in this deployment offers. The Google button only appears when
+// the server has a client ID and a staff list to check against.
+export function getAuthMethods() {
+  return request('/api/auth/methods')
+}
+
+// Hands Google's ID token to the server, which decides whether this account
+// is on the staff list. Not retried: it is a POST, and the token is short-lived.
+export function signInWithGoogle(credential) {
+  return request('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  })
+}
+
 export function logout() {
   return request('/api/auth/logout', { method: 'POST' })
 }
