@@ -73,6 +73,7 @@ reach another clinic's queue.
                     │  Render                              │
                     │    Express API                       │
                     │      queue snapshot (2.5s, in-proc)  │
+                    │      clinic row (60s, in-proc)       │
                     │      reminder engine                 │
                     └───┬──────────────────────────────┬───┘
                         │ service role key             │ Graph API
@@ -90,7 +91,7 @@ staff session cookie is first-party.
 ### Load, and why the snapshot exists
 
 A hundred open tracking pages polling every nine seconds is roughly 700
-requests a minute, and they all arrive from Vercel's edge as one caller. Two
+requests a minute, and they all arrive from Vercel's edge as one caller. Three
 things keep that flat:
 
 - **Tracking pages poll on a schedule set by how close the patient is:** ten
@@ -99,6 +100,12 @@ things keep that flat:
 - **Every concurrent reader shares one snapshot** of the day's tokens, held in
   process for 2.5 seconds and dropped the moment staff change anything. A whole
   waiting room refreshing at once costs a single database read.
+- **The clinic row is held for a minute.** Every request needs it, and it only
+  changes when somebody edits it in Supabase, so it no longer costs a read per
+  poll.
+
+Phones also download less: the staff pages and the QR library are a separate
+chunk that only the desk loads, so the tracker and the board ship without them.
 
 ### Token numbering
 
@@ -183,7 +190,7 @@ copied and nothing can drift out of step.
 
 **`clinics`**, one row per deployment. Name, doctor, address, phone, map link,
 opening hours and `avg_consult_minutes` all live here, so changing any of them
-takes effect without a deploy.
+takes effect within a minute, without a deploy.
 
 **`tokens`**, one row per patient per day.
 
@@ -371,7 +378,9 @@ Two things that have caught us before:
 ## Operations
 
 **Clinic details** live in the `clinics` row, not in code. Editing it updates
-the patient page, the board, the messages staff send and the bot's replies.
+the patient page, the board, the messages staff send and the bot's replies
+within a minute; the API holds the row that long rather than reading it on
+every poll.
 
 **Rotating the staff passcode:** `npm run hash-passcode`, update
 `STAFF_PASSCODE_HASH` on Render, redeploy. Rotating `SESSION_SECRET` too signs
@@ -395,7 +404,7 @@ tap-to-send buttons.
 ## Testing
 
 ```bash
-cd backend  && npm test     # 127 tests, no database needed
+cd backend  && npm test     # 129 tests, no database needed
 cd frontend && npm test     # 31 tests
 cd frontend && npm run lint && npm run build
 ```
