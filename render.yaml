@@ -1,14 +1,13 @@
 services:
   - type: web
     name: queuelite-api
-    runtime: node
-    rootDir: backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: npm ci
-    startCommand: npm start
     healthCheckPath: /api/health
     envVars:
-      - key: NODE_ENV
+      - key: APP_ENV
         value: production
       # Render provides PORT; the app reads it automatically.
       - key: FRONTEND_URL
@@ -17,9 +16,10 @@ services:
         sync: false        # optional: Vercel preview URLs, comma separated
       - key: CLINIC_SLUG
         value: dev-eye-care
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      # Supabase > Project Settings > Database > Connection string > URI.
+      # Use the "Session pooler" string: Render's free tier has no IPv6, and
+      # Supabase's direct connection is IPv6-only.
+      - key: DATABASE_URL
         sync: false
       - key: SESSION_SECRET
         generateValue: true
@@ -28,7 +28,7 @@ services:
       - key: SESSION_TTL_HOURS
         value: "12"
       - key: STAFF_RECOVERY_CODE_HASH
-        sync: false        # optional: `npm run generate-recovery`
+        sync: false        # optional: the generate-recovery tool
       - key: REMINDER_LEAD_PATIENTS
         value: "3"
       - key: AVG_CONSULT_MINUTES
