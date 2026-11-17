@@ -1,0 +1,40 @@
+# Local stack: Postgres plus the single-image app (API + React build).
+#   cp docker/app.env.example docker/app.env   # then fill in the two secrets
+#   docker compose up --build                  # http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: queuelite
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Runs once, on an empty volume. `docker compose down -v` to start over.
+      - ./docker/db-init/00-roles.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
+      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d queuelite"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: queuelite-java:local
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:3001"
+    env_file: docker/app.env
+    environment:
+      # Must stay development over plain http: production forces Secure
+      # cookies, which the browser drops on http://localhost.
+      APP_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/queuelite
+      FRONTEND_URL: http://localhost:8080
+      CLINIC_SLUG: dev-eye-care
+      NOTIFIER: console
+
+volumes:
+  db-data:

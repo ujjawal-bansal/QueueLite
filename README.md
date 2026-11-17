@@ -393,6 +393,26 @@ is read once at start-up. (The migrations still end with
 `notify pgrst, 'reload schema'`; the Java API reads Postgres directly and does
 not need it, but it keeps Supabase's own table editor and REST API current.)
 
+#### Running with Docker
+
+`docker-compose.yml` runs the same image Render builds (API and React app
+together) against a local Postgres 16 that loads `backend/sql/schema.sql` on
+first start. It needs only Docker.
+
+```bash
+cp docker/app.env.example docker/app.env
+# Fill in SESSION_SECRET (generate-secrets) and STAFF_PASSCODE_HASH
+# (hash-passcode <passcode>), as above. Keep the single quotes: the hash
+# contains $, which Compose would otherwise expand.
+docker compose up --build        # http://localhost:8080
+```
+
+The staff desk is at `http://localhost:8080/staff/dev-eye-care`. Port 8080
+leaves 3001 and 5173 free for the dev servers. `APP_ENV` stays `development`
+here because production marks the session cookie Secure, which a browser drops
+on plain `http://localhost`. `docker compose down -v` wipes the database; the
+schema loads again on the next `up`.
+
 ---
 
 ## Moving from the Node API
