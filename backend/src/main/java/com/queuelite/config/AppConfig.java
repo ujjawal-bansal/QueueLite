@@ -1,6 +1,5 @@
 package com.queuelite.config;
 
-import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -184,27 +183,58 @@ public final class AppConfig {
             return new Database("", "", "");
         }
 
-        try {
-            URI uri = URI.create(raw.replaceFirst("^postgres(ql)?://", "http://"));
-            String user = username;
-            String pass = password;
+        // Parsed by hand rather than with java.net.URI: a generated password
+        // can hold characters URI rejects ('[', '^', '#', '/'...), and URI then
+        // silently drops the host instead of failing.
+        String rest = raw.substring(raw.indexOf("://") + 3);
+        int at = rest.lastIndexOf('@');
+        String user = username;
+        String pass = password;
+        if (at >= 0) {
+            String info = rest.substring(0, at);
+            int colon = info.indexOf(':');
+            user = decodeCredential(colon >= 0 ? info.substring(0, colon) : info);
+            pass = colon >= 0 ? decodeCredential(info.substring(colon + 1)) : password;
+            rest = rest.substring(at + 1);
+        }
+        if (pass.contains("[YOUR-") || pass.contains("YOUR-PASSWORD") || pass.contains("YOUR-DATABASE-PASSWORD")) {
+            problems.add("DATABASE_URL still has the [YOUR-PASSWORD] placeholder - put the real database password in");
+            return new Database("", "", "");
+        }
 
-            if (uri.getRawUserInfo() != null) {
-                String[] info = uri.getRawUserInfo().split(":", 2);
-                user = URLDecoder.decode(info[0], StandardCharsets.UTF_8);
-                pass = info.length > 1 ? URLDecoder.decode(info[1], StandardCharsets.UTF_8) : password;
-            }
-
-            String jdbc = "jdbc:postgresql://" + uri.getHost()
-                    + (uri.getPort() > 0 ? ":" + uri.getPort() : "")
-                    + (uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/postgres" : uri.getRawPath())
-                    + (uri.getRawQuery() != null ? "?" + uri.getRawQuery() : "");
-
-            return new Database(withDefaults(jdbc), user, pass);
-        } catch (IllegalArgumentException error) {
+        int pathStart = indexOfAny(rest, '/', '?');
+        String hostPort = pathStart >= 0 ? rest.substring(0, pathStart) : rest;
+        String tail = pathStart >= 0 ? rest.substring(pathStart) : "";
+        if (hostPort.isEmpty() || !hostPort.matches("[A-Za-z0-9.\\-]+(:\\d+)?")) {
             problems.add("DATABASE_URL is not a valid connection string");
             return new Database("", "", "");
         }
+        if (tail.isEmpty() || tail.startsWith("?")) {
+            tail = "/postgres" + tail;
+        }
+
+        return new Database(withDefaults("jdbc:postgresql://" + hostPort + tail), user, pass);
+    }
+
+    // Percent-escapes are decoded when present; '+' is kept as a literal plus,
+    // since it is a common password character and never means a space here.
+    private static String decodeCredential(String value) {
+        if (!value.contains("%")) {
+            return value;
+        }
+        try {
+            return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException notEncoded) {
+            return value;
+        }
+    }
+
+    private static int indexOfAny(String value, char first, char second) {
+        int a = value.indexOf(first);
+        int b = value.indexOf(second);
+        if (a < 0) return b;
+        if (b < 0) return a;
+        return Math.min(a, b);
     }
 
     // Supabase's transaction pooler (port 6543) cannot hold server-side

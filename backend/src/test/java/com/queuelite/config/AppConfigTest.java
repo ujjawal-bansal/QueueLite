@@ -30,6 +30,24 @@ class AppConfigTest {
     }
 
     @Test
+    void aPasswordWithCharactersAUriWouldRejectStillParses() {
+        Map<String, String> env = valid();
+        env.put("DATABASE_URL", "postgresql://postgres.abcd:a[b]c^d#e/f@g+h@aws-1-us-west-2.pooler.supabase.com:5432/postgres");
+        AppConfig config = AppConfig.from(env::get);
+        assertThat(config.database().jdbcUrl()).isEqualTo(
+                "jdbc:postgresql://aws-1-us-west-2.pooler.supabase.com:5432/postgres?prepareThreshold=0");
+        assertThat(config.database().username()).isEqualTo("postgres.abcd");
+        assertThat(config.database().password()).isEqualTo("a[b]c^d#e/f@g+h");
+    }
+
+    @Test
+    void theLeftoverPasswordPlaceholderIsNamed() {
+        Map<String, String> env = valid();
+        env.put("DATABASE_URL", "postgresql://postgres.abcd:[YOUR-DATABASE-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres");
+        assertThatThrownBy(() -> AppConfig.from(env::get)).hasMessageContaining("placeholder");
+    }
+
+    @Test
     void defaultsMatchTheNodeApi() {
         AppConfig config = AppConfig.from(valid()::get);
         assertThat(config.port()).isEqualTo(3001);
